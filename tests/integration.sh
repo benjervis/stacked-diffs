@@ -590,6 +590,42 @@ test_scan_detached_head_errors() {
     return 0
 }
 
+test_checkout_interactive() {
+    local repo
+    repo=$(setup_basic_stack checkout1)
+
+    # Checkout base (option 1)
+    git -C "$repo" checkout --quiet main
+    run_rs "$repo" checkout test-stack <<< "1"
+    if [[ "$OUT" != *"Checked out 'main'."* ]]; then
+        echo "    $(red FAIL): checkout base branch"
+        return 1
+    fi
+
+    # Checkout feature-c (option 4)
+    run_rs "$repo" checkout test-stack <<< "4"
+    if [[ "$OUT" != *"Checked out 'feature-c'."* ]]; then
+        echo "    $(red FAIL): checkout top branch"
+        return 1
+    fi
+
+    # Verify we're on feature-c
+    local current
+    current=$(git -C "$repo" rev-parse --abbrev-ref HEAD)
+    if [[ "$current" != "feature-c" ]]; then
+        echo "    $(red FAIL): expected to be on feature-c, got $current"
+        return 1
+    fi
+
+    # Invalid input handling
+    OUT=$(cd "$repo" && printf "x\n2\n" | "$SD_BIN" checkout test-stack 2>&1)
+    if [[ "$OUT" != *"Invalid input. Enter a number."* ]]; then
+        echo "    $(red FAIL): checkout should reject non-numeric input"
+        return 1
+    fi
+    return 0
+}
+
 # ---------------- Run them ----------------
 
 run_test "rebase: clean three-branch stack with main moved"      test_clean_rebase
@@ -613,6 +649,7 @@ run_test "workflow: init → add×3 → main moves → rebase → show"   test_f
 run_test "init --scan: detects stack from HEAD ancestry"          test_scan_detects_stack
 run_test "init --scan: warns when HEAD is already on base"        test_scan_on_base_warns
 run_test "init --scan: errors on detached HEAD"                   test_scan_detached_head_errors
+run_test "checkout: interactive selection and checkout"            test_checkout_interactive
 
 echo
 echo "============================================"

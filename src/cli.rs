@@ -83,6 +83,8 @@ pub enum Cmd {
         #[arg(long)]
         remote: Option<String>,
     },
+    /// Interactively select and check out a branch from the stack
+    Checkout { stack: Option<String> },
     /// Print shell completion script to stdout
     #[command(hide = true)]
     Completions { shell: Shell },
@@ -90,5 +92,5 @@ pub enum Cmd {
 
 /// Known subcommand names — used to distinguish `sd rebase foo` from `sd foo` (legacy shorthand).
 pub const SUBCOMMANDS: &[&str] = &[
-    "init", "add", "rm", "show", "status", "rebase", "push", "sync", "completions",
+    "init", "add", "rm", "show", "status", "rebase", "push", "sync", "checkout", "completions",
 ];

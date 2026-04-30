@@ -12,9 +12,9 @@ use std::process::ExitCode;
 
 use cli::{Cli, Cmd, SUBCOMMANDS};
 use commands::{
-    add::cmd_add, completions::cmd_completions, init::cmd_init, list::cmd_list, push::cmd_push,
-    rebase::{do_abort, do_rebase}, rm::cmd_rm, show::cmd_show, status::cmd_status,
-    sync::cmd_sync,
+    add::cmd_add, checkout::cmd_checkout, completions::cmd_completions, init::cmd_init,
+    list::cmd_list, push::cmd_push, rebase::{do_abort, do_rebase}, rm::cmd_rm, show::cmd_show,
+    status::cmd_status, sync::cmd_sync,
 };
 use config::resolve_stack;
 use ctx::Ctx;
@@ -116,6 +116,10 @@ fn dispatch(cmd: Cmd, ctx: &Ctx) -> Result<CmdResult> {
         Cmd::Sync { stack, remote } => {
             let stack = resolve_stack(ctx, stack.as_deref())?;
             cmd_sync(ctx, &stack, remote.as_deref().unwrap_or("origin"))
+        }
+        Cmd::Checkout { stack } => {
+            let stack = resolve_stack(ctx, stack.as_deref())?;
+            cmd_checkout(ctx, &stack)
         }
         Cmd::Completions { shell } => {
             cmd_completions(shell);
