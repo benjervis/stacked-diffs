@@ -583,6 +583,16 @@ fn do_rebase(ctx: &Ctx, name: &str, remote: &str, do_fetch: bool) -> Result<i32>
     Ok(0)
 }
 
+/// Detect the repo's default branch via `git rev-parse --abbrev-ref origin/HEAD`.
+/// Falls back to "main" if the remote HEAD isn't configured.
+fn detect_default_branch(ctx: &Ctx) -> String {
+    git(ctx, &["rev-parse", "--abbrev-ref", "origin/HEAD"])
+        .ok()
+        .and_then(|s| s.strip_prefix("origin/").map(|s| s.to_string()))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "main".to_string())
+}
+
 /// Walk ancestry from HEAD back to `base`, collecting branch names in order
 /// (top of stack first, so we reverse before writing). Returns branches
 /// ordered bottom-to-top (i.e. ready to append after the base line).
@@ -657,7 +667,14 @@ fn cmd_init(ctx: &Ctx, name: &str, base: Option<&str>, scan: bool) -> Result<i32
         ));
         return Ok(1);
     }
-    let base = base.unwrap_or("main");
+    let detected;
+    let base = match base {
+        Some(b) => b,
+        None => {
+            detected = detect_default_branch(ctx);
+            detected.as_str()
+        }
+    };
     if !branch_exists(ctx, base) {
         err_print(&format!("Base branch '{base}' does not exist locally."));
         return Ok(1);
