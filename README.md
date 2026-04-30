@@ -53,7 +53,7 @@ These files are intended to be checked in — they describe an intent, like a `.
 
 | Command | Purpose |
 |---|---|
-| `sd init <stack> [<base>]` | Create a new stack config. Default base: `main`. |
+| `sd init <stack> [<base>] [--scan]` | Create a new stack config. Base defaults to `origin/HEAD` (falls back to `main`). `--scan` walks ancestry from HEAD to base and populates branches automatically. |
 | `sd add <stack> <branch>` | `git checkout -b <branch>` from the top of the stack and append to config. |
 | `sd rm <stack> <branch>` | Remove a branch from the config (does NOT delete the local branch). |
 | `sd show <stack>` | Print the stack chain in one line. |
@@ -68,7 +68,7 @@ Bare `sd <stack>` is shorthand for `sd rebase <stack>`.
 ## Typical workflow
 
 ```sh
-# 1. Create the stack config and add some branches.
+# 1a. Starting fresh — create the config and add branches one at a time.
 sd init code-freeze
 sd add code-freeze ben/feature-a
 # work on feature-a, commit
@@ -76,6 +76,12 @@ sd add code-freeze ben/feature-b
 # work on feature-b, commit
 sd add code-freeze ben/feature-c
 # work on feature-c, commit
+
+# 1b. Already have a stack of branches? Check out the top branch and scan.
+#     sd detects the base via origin/HEAD and walks ancestry back to it.
+git checkout ben/feature-c
+sd init code-freeze --scan
+# → Detected 3 branches: ben/feature-a -> ben/feature-b -> ben/feature-c
 
 # 2. Push all branches up so PRs can be opened.
 sd push code-freeze
