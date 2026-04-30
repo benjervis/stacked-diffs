@@ -10,8 +10,11 @@ use crate::output::{err_print, ok};
 /// Simple TUI selector using terminal control sequences.
 /// Returns the index of the selected item, or None if aborted.
 fn select_interactive(items: &[(String, &str)]) -> Option<usize> {
+    use std::io::BufReader;
+    
     let stdin = io::stdin();
     let mut stdout = io::stdout();
+    let mut reader = BufReader::new(stdin);
 
     // Enable raw mode for arrow key handling
     let _raw = enable_raw_mode();
@@ -20,7 +23,7 @@ fn select_interactive(items: &[(String, &str)]) -> Option<usize> {
     loop {
         // Clear screen and redraw
         print!("\x1b[2J\x1b[H");
-        println!("Use ↑↓ to move, Enter to select, Esc to cancel:");
+        println!("Use ↑↓ or j/k to move, Enter to select, Esc/q to cancel:");
         println!();
 
         for (i, (name, suffix)) in items.iter().enumerate() {
@@ -34,48 +37,76 @@ fn select_interactive(items: &[(String, &str)]) -> Option<usize> {
 
         stdout.flush().unwrap();
 
-        // Read a single key
+        // Read a single byte
         let mut buf = [0u8; 1];
-        match stdin.lock().read(&mut buf) {
-            Ok(1) => match buf[0] {
-                b'\x1b' => {
-                    // Escape sequence - could be Esc or arrow key
-                    let mut seq = [0u8; 2];
-                    if stdin.lock().read_exact(&mut seq).is_ok() {
-                        if seq == [b'[', b'A'] {
-                            // Up arrow
-                            if selected > 0 {
-                                selected -= 1;
+        match reader.read(&mut buf) {
+            Ok(1) => {
+                match buf[0] {
+                    b'\x1b' => {
+                        // Escape sequence - try to read more bytes immediately
+                        let mut seq_buf = [0u8; 2];
+                        let mut total_read = 0;
+                        
+                        // Try to read up to 2 more bytes without blocking too long
+                        for i in 0..2 {
+                            match reader.read(&mut seq_buf[i..i+1]) {
+                                Ok(1) => total_read += 1,
+                                _ => break,
                             }
-                        } else if seq == [b'[', b'B'] {
-                            // Down arrow
-                            if selected < items.len() - 1 {
-                                selected += 1;
+                        }
+                        
+                        if total_read == 2 && seq_buf[0] == b'[' {
+                            match seq_buf[1] {
+                                b'A' => {
+                                    // Up arrow
+                                    if selected > 0 {
+                                        selected -= 1;
+                                    }
+                                }
+                                b'B' => {
+                                    // Down arrow
+                                    if selected < items.len() - 1 {
+                                        selected += 1;
+                                    }
+                                }
+                                _ => {} // Other arrow keys
                             }
                         } else {
-                            // Some other escape sequence, treat as Esc
+                            // Just Esc or incomplete sequence
                             break None;
                         }
-                    } else {
-                        // Just Esc
-                        break None;
+                    }
+                    b'\r' | b'\n' => break Some(selected),
+                    b'j' | b'J' => {
+                        // j for down
+                        if selected < items.len() - 1 {
+                            selected += 1;
+                        }
+                    }
+                    b'k' | b'K' => {
+                        // k for up  
+                        if selected > 0 {
+                            selected -= 1;
+                        }
+                    }
+                    b'q' | b'Q' => break None,
+                    _ => {
+                        // Other keys, ignore
                     }
                 }
-                b'\r' | b'\n' => break Some(selected),
-                b'q' | b'Q' => break None,
-                _ => {
-                    // Other keys, ignore
-                }
-            },
-            _ => break None,
+            }
+            Ok(0) | Ok(_) => break None, // EOF or unexpected read size
+            Err(_) => break None,
         }
     }
 }
 
 /// Enable terminal raw mode for single-key input.
 fn enable_raw_mode() -> impl Drop {
-    // On Unix systems, we can use stty to set raw mode
-    let _ = Command::new("stty").arg("-echo").arg("-icanon").status();
+    // Save current settings and set raw mode with minimal flags
+    let _ = Command::new("stty")
+        .args(["-echo", "-icanon"])
+        .status();
     RawModeGuard
 }
 
@@ -84,7 +115,9 @@ struct RawModeGuard;
 impl Drop for RawModeGuard {
     fn drop(&mut self) {
         // Restore terminal mode
-        let _ = Command::new("stty").arg("echo").arg("icanon").status();
+        let _ = Command::new("stty")
+            .args(["echo", "icanon"])
+            .status();
     }
 }
 
@@ -158,19 +191,26 @@ fn select_simple(all: &[String]) -> Option<usize> {
     loop {
         eprint!("Enter number (1-{}): ", all.len());
         let mut input = String::new();
-        if io::stdin().read_line(&mut input).is_err() {
-            return None;
-        }
-        match input.trim().parse::<usize>() {
-            Ok(n) if 1 <= n && n <= all.len() => return Some(n - 1),
+        match io::stdin().read_line(&mut input) {
+            Ok(0) => return None, // EOF
             Ok(_) => {
-                eprintln!("Enter a number between 1 and {}.", all.len());
-                continue;
+                let trimmed = input.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                match trimmed.parse::<usize>() {
+                    Ok(n) if 1 <= n && n <= all.len() => return Some(n - 1),
+                    Ok(_) => {
+                        eprintln!("Enter a number between 1 and {}.", all.len());
+                        continue;
+                    }
+                    Err(_) => {
+                        eprintln!("Invalid input. Enter a number.");
+                        continue;
+                    }
+                }
             }
-            Err(_) => {
-                eprintln!("Invalid input. Enter a number.");
-                continue;
-            }
+            Err(_) => return None,
         }
     }
 }
