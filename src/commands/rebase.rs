@@ -238,10 +238,7 @@ fn rebase_branches(
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0);
 
-    for i in 0..count {
-        if i < completed {
-            continue;
-        }
+    for i in completed..count {
         let branch = &branches[i];
         let parent = if i == 0 { base } else { branches[i - 1].as_str() };
         let upstream = load_tip(sd, "oldtip", parent).unwrap_or_default();

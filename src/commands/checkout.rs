@@ -24,8 +24,9 @@ const WHITE: &str = "\x1b[37m";
 const CIRCLE: &str = "●";
 const CIRCLE_FILLED: &str = "◉";
 const VERTICAL: &str = "│";
-const BRANCH_DOWN: &str = "└─";
-const BRANCH_RIGHT: &str = "├─";
+const BRANCH_START: &str = "╭─";
+const BRANCH_MID: &str = "├─";
+const BRANCH_END: &str = "└─";
 
 /// Enhanced TUI selector with colors and tree structure.
 /// Returns the index of the selected item, or None if aborted.
@@ -61,13 +62,16 @@ fn select_interactive(items: &[(String, &str)]) -> Option<usize> {
             let is_missing = suffix.contains("missing");
             
             // Tree connector
-            let connector = if i == 0 {
-                format!("{}{}{} ", CYAN, BRANCH_DOWN, RESET)
+            let connector_char = if items.len() == 1 {
+                BRANCH_END
+            } else if i == 0 {
+                BRANCH_START
             } else if i == items.len() - 1 {
-                format!("{}{}{} ", CYAN, BRANCH_DOWN, RESET)
+                BRANCH_END
             } else {
-                format!("{}{}{} ", CYAN, BRANCH_RIGHT, RESET)
+                BRANCH_MID
             };
+            let connector = format!("{}{}{} ", CYAN, connector_char, RESET);
             
             // Selection indicator with background
             let selection = if i == selected {
@@ -237,7 +241,7 @@ pub fn cmd_checkout(ctx: &Ctx, name: &str) -> Result<CmdResult> {
         select_interactive(&items)
     } else {
         // Fallback to simple numbered selection for non-interactive environments
-        select_simple(ctx, &all)
+        select_simple(&items)
     };
 
     if let Some(selected) = selected {
@@ -261,27 +265,22 @@ pub fn cmd_checkout(ctx: &Ctx, name: &str) -> Result<CmdResult> {
 }
 
 /// Enhanced numbered selection fallback for non-TTY environments.
-fn select_simple(ctx: &Ctx, all: &[String]) -> Option<usize> {
-    use std::io;
-    
-    // Get current branch for highlighting
-    let current_branch = git(ctx, &["rev-parse", "--abbrev-ref", "HEAD"]).ok();
-    
+fn select_simple(items: &[(String, &str)]) -> Option<usize> {
     println!("{}╭─────────────────────────────────────╮{}", CYAN, RESET);
     println!("{}│  {}Select a branch to checkout:{}         │{}", CYAN, WHITE, CYAN, RESET);
     println!("{}╰─────────────────────────────────────╯{}", CYAN, RESET);
     println!();
-    
-    for (i, branch) in all.iter().enumerate() {
-        let is_current = current_branch.as_deref() == Some(branch.as_str());
-        let is_missing = !branch_exists(ctx, branch);
-        
+
+    for (i, (name, suffix)) in items.iter().enumerate() {
+        let is_current = suffix.contains("current");
+        let is_missing = suffix.contains("missing");
+
         let number = if is_current {
             format!("{}{}{}{}.", BOLD, GREEN, i + 1, RESET)
         } else {
             format!("{}{}.", DIM, i + 1)
         };
-        
+
         let circle = if is_current {
             format!("{}{}{}", GREEN, CIRCLE_FILLED, RESET)
         } else if is_missing {
@@ -289,29 +288,29 @@ fn select_simple(ctx: &Ctx, all: &[String]) -> Option<usize> {
         } else {
             format!("{}{}{}", BLUE, CIRCLE, RESET)
         };
-        
+
         let branch_name = if is_current {
-            format!("{}{}{}", BOLD, GREEN, branch)
+            format!("{}{}{}", BOLD, GREEN, name)
         } else if is_missing {
-            format!("{}{}{}", DIM, RED, branch)
+            format!("{}{}{}", DIM, RED, name)
         } else {
-            format!("{}{}", WHITE, branch)
+            format!("{}{}", WHITE, name)
         };
-        
-        let suffix = if is_current {
+
+        let styled_suffix = if is_current {
             format!(" {}{}(current){}", DIM, GREEN, RESET)
         } else if is_missing {
             format!(" {}{}(missing){}", DIM, RED, RESET)
         } else {
             "".to_string()
         };
-        
-        println!("  {} {} {}{}", number, circle, branch_name, suffix);
+
+        println!("  {} {} {}{}", number, circle, branch_name, styled_suffix);
     }
-    
+
     println!();
     loop {
-        eprint!("{}Enter number (1-{}): {}{}", CYAN, all.len(), YELLOW, RESET);
+        eprint!("{}Enter number (1-{}): {}{}", CYAN, items.len(), YELLOW, RESET);
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
             Ok(0) => return None, // EOF
@@ -321,9 +320,9 @@ fn select_simple(ctx: &Ctx, all: &[String]) -> Option<usize> {
                     continue;
                 }
                 match trimmed.parse::<usize>() {
-                    Ok(n) if 1 <= n && n <= all.len() => return Some(n - 1),
+                    Ok(n) if 1 <= n && n <= items.len() => return Some(n - 1),
                     Ok(_) => {
-                        eprintln!("{}Enter a number between 1 and {}{}.", RED, all.len(), RESET);
+                        eprintln!("{}Enter a number between 1 and {}{}.", RED, items.len(), RESET);
                         continue;
                     }
                     Err(_) => {

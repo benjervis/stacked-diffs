@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use std::process::{Command, Stdio};
 
 use crate::commands::rebase::{do_rebase, fetch_and_fast_forward};
@@ -159,6 +159,3 @@ pub fn cmd_sync(ctx: &Ctx, name: &str, remote: &str) -> Result<CmdResult> {
     step("Rebasing remaining branches...");
     do_rebase(ctx, name, remote, false) // --no-fetch: already fetched above
 }
-
-// Bring `context` into scope for the `.context(...)` call in `gh_pr_state`.
-use anyhow::Context;

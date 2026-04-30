@@ -1,0 +1,63 @@
+--- Starting state ---
+c1  o <- branch: feature-C
+    |
+c2  o
+    |
+c3  o <- branch: feature-B
+    |
+c4  o
+    |
+c5  o
+    |
+c6  o <- branch: feature A
+    |
+c7  o
+  /
+/
+o <- main
+----------------------
+
+
+--- Edited State ---
+    c1  o <- branch: feature-C
+        |
+    c2  o
+        |
+    c3  o <- branch: feature-B
+        |
+    c4  o
+        |
+    c5  o
+       /
+c9  o /
+    |/
+c6  o <- branch: feature A
+    |
+c7  o
+   /
+  /
+ /
+o <- main
+-----------------
+
+--- Final state ---
+c1  o <- branch: feature-C
+    |
+c2  o
+    |
+c3  o <- branch: feature-B
+    |
+c4  o
+    |
+c5  o
+    |
+c9  o
+    |
+c6  o <- branch: feature A
+    |
+c7  o
+   /
+  /
+ /
+o <- main
+---------------
