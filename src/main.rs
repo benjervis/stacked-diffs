@@ -84,6 +84,12 @@ enum Cmd {
         #[arg(long)]
         remote: Option<String>,
     },
+    /// Sync the stack: detect merged PRs, clean up, and rebase remaining branches
+    Sync {
+        stack: Option<String>,
+        #[arg(long)]
+        remote: Option<String>,
+    },
     /// Print shell completion script to stdout
     #[command(hide = true)]
     Completions {
@@ -310,6 +316,8 @@ Commands:
       --remote NAME                    remote to fetch from (default: origin)
       --abort                          restore branches to pre-run tips, clear state
   push <stack> [--remote NAME]       git push --force-with-lease each branch
+  sync <stack> [--remote NAME]       detect merged PRs via gh, remove from stack,
+                                     delete local branches, rebase remainder
   --list                             list configured stacks
   --help                             show this help
 
@@ -959,6 +967,203 @@ fn cmd_push(ctx: &Ctx, name: &str, remote: &str) -> Result<i32> {
     Ok(0)
 }
 
+// ---------- sync ----------
+
+#[derive(Debug, PartialEq)]
+enum PrState {
+    Merged,
+    Closed,
+    Open,
+    NoPr,
+}
+
+/// Check gh is installed and authenticated. Returns Ok(()) or a clear error.
+fn check_gh() -> Result<()> {
+    // Check installed
+    let installed = Command::new("gh")
+        .args(["--version"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !installed {
+        bail!(
+            "'gh' (GitHub CLI) is not installed. Install it from https://cli.github.com/ and run 'gh auth login'."
+        );
+    }
+    // Check authenticated
+    let authed = Command::new("gh")
+        .args(["auth", "status"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !authed {
+        bail!(
+            "'gh' is installed but not authenticated. Run 'gh auth login' first."
+        );
+    }
+    Ok(())
+}
+
+fn gh_pr_state(branch: &str) -> Result<PrState> {
+    let out = Command::new("gh")
+        .args(["pr", "view", branch, "--json", "state", "--jq", ".state"])
+        .output()
+        .context("failed to run gh")?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        if stderr.contains("no pull requests found") {
+            return Ok(PrState::NoPr);
+        }
+        bail!("gh pr view failed for '{}': {}", branch, stderr.trim());
+    }
+
+    let state = String::from_utf8(out.stdout)?.trim().to_uppercase();
+    Ok(match state.as_str() {
+        "MERGED" => PrState::Merged,
+        "CLOSED" => PrState::Closed,
+        _ => PrState::Open,
+    })
+}
+
+fn cmd_sync(ctx: &Ctx, name: &str, remote: &str) -> Result<i32> {
+    check_gh().map_err(|e| {
+        err_print(&format!("{e}"));
+        e
+    })?;
+
+    if !repo_clean(ctx)? {
+        err_print("Working tree is dirty. Commit or stash changes before syncing.");
+        git_interactive(ctx, &["status", "--short"])?;
+        return Ok(1);
+    }
+
+    let stack = load_stack(ctx, name)?;
+    let base = &stack.base;
+    let branches = &stack.branches;
+
+    if branches.is_empty() {
+        info(&format!("Stack '{name}' has no branches — nothing to sync."));
+        return Ok(0);
+    }
+
+    // Fetch base first so rebase has an up-to-date target.
+    step(&format!("Fetching {remote}/{base}..."));
+    if !git_interactive(ctx, &["fetch", remote, base])? {
+        err_print("Fetch failed.");
+        return Ok(1);
+    }
+    // Fast-forward base if possible
+    let local_tip = tip(ctx, base)?;
+    let remote_tip = tip(ctx, &format!("{remote}/{base}"))?;
+    if local_tip != remote_tip {
+        if git_ok(ctx, &["merge-base", "--is-ancestor", &local_tip, &remote_tip])? {
+            git(ctx, &["update-ref", &format!("refs/heads/{base}"), &remote_tip])?;
+            info(&format!(
+                "Fast-forwarded '{base}' from {} to {}.",
+                short(&local_tip),
+                short(&remote_tip)
+            ));
+        } else {
+            err_print(&format!(
+                "Local '{base}' has diverged from {remote}/{base}. Reconcile manually."
+            ));
+            return Ok(1);
+        }
+    }
+
+    // Check PR state for every branch.
+    step("Checking PR states via gh...");
+    let mut states: Vec<(&str, PrState)> = Vec::new();
+    for branch in branches {
+        let state = gh_pr_state(branch)?;
+        let label = match &state {
+            PrState::Merged => "merged",
+            PrState::Closed => "closed (not merged)",
+            PrState::Open  => "open",
+            PrState::NoPr  => "no PR",
+        };
+        info(&format!("  {branch}: {label}"));
+        states.push((branch.as_str(), state));
+    }
+
+    // Abort immediately if any PR is closed-but-not-merged.
+    let closed: Vec<&str> = states.iter()
+        .filter(|(_, s)| *s == PrState::Closed)
+        .map(|(b, _)| *b)
+        .collect();
+    if !closed.is_empty() {
+        eprintln!();
+        err_print(&format!(
+            "Aborting: {} branch{} {} a closed (unmerged) PR:",
+            closed.len(),
+            if closed.len() == 1 { "" } else { "es" },
+            if closed.len() == 1 { "has" } else { "have" },
+        ));
+        for b in &closed {
+            err_print(&format!("  {b}"));
+        }
+        info("These branches were closed without merging. The stack assumptions are broken.");
+        info("Resolve manually (remove from stack or re-open the PR), then re-run.");
+        return Ok(1);
+    }
+
+    // Remove merged branches from the config and delete local branches.
+    let mut removed: Vec<String> = Vec::new();
+    for (branch, state) in &states {
+        if *state != PrState::Merged {
+            continue;
+        }
+        // Remove from config file.
+        let file = ctx.stacks_dir.join(name);
+        let content = fs::read_to_string(&file)?;
+        let new_content: String = content
+            .lines()
+            .filter(|line| line.trim() != *branch)
+            .flat_map(|line| [line, "\n"])
+            .collect();
+        fs::write(&file, new_content)?;
+
+        // Delete local branch.
+        let head = git(ctx, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+        if head == *branch {
+            // Check out base first so we're not on the branch we're deleting.
+            git_q(ctx, &["checkout", "--quiet", base]);
+        }
+        if branch_exists(ctx, branch) {
+            git(ctx, &["branch", "-D", branch])?;
+            ok(&format!("Merged: deleted local branch '{branch}'."));
+        } else {
+            ok(&format!("Merged: '{branch}' already gone locally."));
+        }
+        removed.push(branch.to_string());
+    }
+
+    if removed.is_empty() && states.iter().all(|(_, s)| *s == PrState::Open || *s == PrState::NoPr) {
+        info("Nothing to sync — no merged PRs found.");
+        return Ok(0);
+    }
+
+    // Reload the stack (config has been modified) and rebase remainder.
+    let updated = load_stack(ctx, name)?;
+    if updated.branches.is_empty() {
+        ok(&format!("All branches merged — stack '{name}' is empty."));
+        return Ok(0);
+    }
+
+    step("Rebasing remaining branches...");
+    let exit = do_rebase(ctx, name, remote, false)?; // --no-fetch: already fetched above
+    if exit != 0 {
+        return Ok(exit);
+    }
+
+    Ok(0)
+}
+
 // ---------- completions ----------
 
 fn cmd_completions(shell: Shell) {
@@ -1004,7 +1209,7 @@ function __sd_needs_stack
 end
 
 # Replace positional completions for every stack-taking subcommand.
-for __sd_sub in rebase add rm show status push
+for __sd_sub in rebase add rm show status push sync
     complete -c sd -n "__fish_seen_subcommand_from $__sd_sub; and __sd_needs_stack" \
         -f -a "(__sd_stacks)" -d "stack"
 end
@@ -1013,7 +1218,7 @@ end
 // ---------- main ----------
 
 /// Known subcommand names — used to distinguish `sd rebase foo` from `sd foo` (legacy).
-const SUBCOMMANDS: &[&str] = &["init", "add", "rm", "show", "status", "rebase", "push", "completions"];
+const SUBCOMMANDS: &[&str] = &["init", "add", "rm", "show", "status", "rebase", "push", "sync", "completions"];
 
 fn run() -> Result<i32> {
     let raw: Vec<String> = std::env::args().collect();
@@ -1100,6 +1305,10 @@ fn run() -> Result<i32> {
             Cmd::Push { stack, remote } => {
                 let stack = resolve_stack(&ctx, stack.as_deref())?;
                 cmd_push(&ctx, &stack, remote.as_deref().unwrap_or("origin"))
+            }
+            Cmd::Sync { stack, remote } => {
+                let stack = resolve_stack(&ctx, stack.as_deref())?;
+                cmd_sync(&ctx, &stack, remote.as_deref().unwrap_or("origin"))
             }
             Cmd::Completions { shell } => {
                 cmd_completions(shell);

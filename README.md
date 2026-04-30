@@ -60,6 +60,7 @@ These files are intended to be checked in — they describe an intent, like a `.
 | `sd status <stack> [--remote NAME]` | Per-branch tip + ahead/behind vs parent + remote sync state.                                                                                                      |
 | `sd rebase <stack> [flags]`         | Rebase every branch in the stack onto its parent. Flags: `--no-fetch`, `--remote NAME`, `--abort`.                                                                |
 | `sd push <stack> [--remote NAME]`   | `git push --force-with-lease` each branch.                                                                                                                        |
+| `sd sync <stack> [--remote NAME]`   | Detect merged PRs via `gh`, remove them from the stack, delete local branches, and rebase the remainder. Aborts if any PR was closed without merging.             |
 | `sd --list`                         | List all configured stacks.                                                                                                                                       |
 | `sd --help`                         | Show full help.                                                                                                                                                   |
 
@@ -96,6 +97,12 @@ sd rebase code-freeze
 
 # 4. Force-push the rebased branches.
 sd push code-freeze
+
+# 5. Once PRs are merged on GitHub, sync the stack:
+#    - detects merged PRs via gh
+#    - deletes local branches for merged PRs
+#    - rebases remaining branches onto the updated base
+sd sync code-freeze
 
 # At any point, see where each branch sits:
 sd status code-freeze
