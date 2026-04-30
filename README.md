@@ -51,17 +51,17 @@ These files are intended to be checked in — they describe an intent, like a `.
 
 ## Commands
 
-| Command | Purpose |
-|---|---|
+| Command                             | Purpose                                                                                                                                                           |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sd init <stack> [<base>] [--scan]` | Create a new stack config. Base defaults to `origin/HEAD` (falls back to `main`). `--scan` walks ancestry from HEAD to base and populates branches automatically. |
-| `sd add <stack> <branch>` | `git checkout -b <branch>` from the top of the stack and append to config. |
-| `sd rm <stack> <branch>` | Remove a branch from the config (does NOT delete the local branch). |
-| `sd show <stack>` | Print the stack chain in one line. |
-| `sd status <stack> [--remote NAME]` | Per-branch tip + ahead/behind vs parent + remote sync state. |
-| `sd rebase <stack> [flags]` | Rebase every branch in the stack onto its parent. Flags: `--no-fetch`, `--remote NAME`, `--abort`. |
-| `sd push <stack> [--remote NAME]` | `git push --force-with-lease` each branch. |
-| `sd --list` | List all configured stacks. |
-| `sd --help` | Show full help. |
+| `sd add <stack> <branch>`           | `git checkout -b <branch>` from the top of the stack and append to config.                                                                                        |
+| `sd rm <stack> <branch>`            | Remove a branch from the config (does NOT delete the local branch).                                                                                               |
+| `sd show <stack>`                   | Print the stack chain in one line.                                                                                                                                |
+| `sd status <stack> [--remote NAME]` | Per-branch tip + ahead/behind vs parent + remote sync state.                                                                                                      |
+| `sd rebase <stack> [flags]`         | Rebase every branch in the stack onto its parent. Flags: `--no-fetch`, `--remote NAME`, `--abort`.                                                                |
+| `sd push <stack> [--remote NAME]`   | `git push --force-with-lease` each branch.                                                                                                                        |
+| `sd --list`                         | List all configured stacks.                                                                                                                                       |
+| `sd --help`                         | Show full help.                                                                                                                                                   |
 
 Bare `sd <stack>` is shorthand for `sd rebase <stack>`.
 
@@ -124,16 +124,16 @@ For each branch `sd` runs:
 git rebase --onto <new-parent-tip> <old-parent-tip> <branch>
 ```
 
-`<old-parent-tip>` is snapshotted at the start of the run, *before* any rebase happens. That means commits added directly to a mid-stack branch (e.g. you committed to `feature-a` while `feature-b` is still pointing at an older `feature-a` tip) get pulled forward into child branches automatically, without duplication.
+`<old-parent-tip>` is snapshotted at the start of the run, _before_ any rebase happens. That means commits added directly to a mid-stack branch (e.g. you committed to `feature-a` while `feature-b` is still pointing at an older `feature-a` tip) get pulled forward into child branches automatically, without duplication.
 
 ## Exit codes
 
-| Code | Meaning |
-|---|---|
-| 0 | Success |
-| 1 | Invocation/config error |
-| 2 | Rebase conflict — user action required |
-| 3 | Rebase aborted |
+| Code | Meaning                                |
+| ---- | -------------------------------------- |
+| 0    | Success                                |
+| 1    | Invocation/config error                |
+| 2    | Rebase conflict — user action required |
+| 3    | Rebase aborted                         |
 
 ## License
 

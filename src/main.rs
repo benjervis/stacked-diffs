@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 use std::fmt::Write as FmtWrite;
 use std::fs;
 use std::io::{self, BufRead};
@@ -64,6 +65,11 @@ enum Cmd {
         stack: String,
         #[arg(long)]
         remote: Option<String>,
+    },
+    /// Print shell completion script to stdout
+    #[command(hide = true)]
+    Completions {
+        shell: Shell,
     },
 }
 
@@ -909,10 +915,61 @@ fn cmd_push(ctx: &Ctx, name: &str, remote: &str) -> Result<i32> {
     Ok(0)
 }
 
+// ---------- completions ----------
+
+fn cmd_completions(shell: Shell) {
+    let mut cmd = Cli::command();
+    let bin_name = cmd.get_name().to_string();
+    clap_complete::generate(shell, &mut cmd, &bin_name, &mut io::stdout());
+
+    // For Fish, append a custom completion function that supplies dynamic stack
+    // names by reading .stacks/ in the current git repo at completion time.
+    if shell == Shell::Fish {
+        print!("{}", FISH_DYNAMIC_COMPLETIONS);
+    }
+}
+
+/// Custom Fish completion snippet appended after clap's generated script.
+///
+/// `__sd_stacks` reads `.stacks/` relative to the git repo root (same logic
+/// the binary uses at runtime) and returns one stack name per line.
+///
+/// The `complete` directives replace clap's generic positional argument
+/// completions for every subcommand that takes a <stack> argument with
+/// dynamic stack-name results instead.
+const FISH_DYNAMIC_COMPLETIONS: &str = r#"
+# --- sd dynamic stack-name completions ---
+
+function __sd_stacks
+    set -l root (git rev-parse --show-toplevel 2>/dev/null)
+    or return
+    for f in $root/.stacks/*
+        if test -f $f
+            basename $f
+        end
+    end
+end
+
+# Helper: true when the current token position is the first positional
+# argument (i.e. the stack name slot) for each subcommand.
+function __sd_needs_stack
+    set -l cmd (commandline -opc)
+    # cmd[1] is "sd", cmd[2] is the subcommand — we need exactly 2 tokens
+    # before the current word (no stack yet).
+    test (count $cmd) -eq 2
+end
+
+# Replace positional completions for every stack-taking subcommand.
+for __sd_sub in rebase add rm show status push
+    complete -c sd -n "__fish_seen_subcommand_from $__sd_sub; and __sd_needs_stack" \
+        -f -a "(__sd_stacks)" -d "stack"
+end
+"#;
+
 // ---------- main ----------
 
 /// Known subcommand names — used to distinguish `sd rebase foo` from `sd foo` (legacy).
-const SUBCOMMANDS: &[&str] = &["init", "add", "rm", "show", "status", "rebase", "push"];
+const SUBCOMMANDS: &[&str] = &["init", "add", "rm", "show", "status", "rebase", "push", "completions"];
 
 fn run() -> Result<i32> {
     let raw: Vec<String> = std::env::args().collect();
@@ -972,6 +1029,10 @@ fn run() -> Result<i32> {
             }
             Cmd::Push { stack, remote } => {
                 cmd_push(&ctx, &stack, remote.as_deref().unwrap_or("origin"))
+            }
+            Cmd::Completions { shell } => {
+                cmd_completions(shell);
+                return Ok(0);
             }
         };
     }
