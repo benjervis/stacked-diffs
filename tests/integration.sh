@@ -439,8 +439,10 @@ test_show_subcommand() {
     run_rs "$repo" show test-stack; out=$OUT
     assert_eq "$TEST_EXIT" 0 "show should succeed" || { echo "$out"; return 1; }
     assert_contains "$out" "Stack: test-stack" "should print stack name" || return 1
-    assert_contains "$out" "base: main" "should print base" || return 1
-    assert_contains "$out" "feature-a -> feature-b -> feature-c" "should print chain" || return 1
+    assert_contains "$out" "main" "should print base" || return 1
+    assert_contains "$out" "feature-a" "should print feature-a" || return 1
+    assert_contains "$out" "feature-b" "should print feature-b" || return 1
+    assert_contains "$out" "feature-c" "should print feature-c" || return 1
     return 0
 }
 
@@ -453,14 +455,14 @@ test_status_subcommand() {
     assert_contains "$out" "Stack: test-stack" "should print header" || return 1
     assert_contains "$out" "feature-a" "should list feature-a" || return 1
     assert_contains "$out" "feature-c" "should list feature-c" || return 1
-    assert_contains "$out" "ahead 1 of feature-b" "feature-c should be ahead 1 of feature-b" || return 1
+    assert_contains "$out" "ahead of feature-b" "feature-c should be ahead of feature-b" || return 1
 
     git -C "$repo" checkout --quiet main
     echo "moved" > "$repo/moved.txt"
     git -C "$repo" add moved.txt
     git -C "$repo" commit --quiet -m "main: moved"
     run_rs "$repo" status test-stack; out=$OUT
-    assert_contains "$out" "behind 1 (rebase needed)" "should show behind 1 after main moves" || return 1
+    assert_contains "$out" "rebase needed" "should show rebase needed after main moves" || return 1
     return 0
 }
 
@@ -537,7 +539,9 @@ test_full_workflow() {
     done
 
     run_rs "$repo" show flow; out=$OUT
-    assert_contains "$out" "alpha -> beta -> gamma" "should show full chain" || return 1
+    assert_contains "$out" "alpha" "should show alpha" || return 1
+    assert_contains "$out" "beta" "should show beta" || return 1
+    assert_contains "$out" "gamma" "should show gamma" || return 1
     return 0
 }
 

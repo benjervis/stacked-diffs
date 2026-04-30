@@ -5,34 +5,16 @@ use std::process::Command;
 use crate::config::load_stack;
 use crate::ctx::{branch_exists, git, git_ok, Ctx};
 use crate::errors::{CmdError, CmdResult};
-use crate::output::{err_print, ok};
-
-// Color constants for terminal output
-const RESET: &str = "\x1b[0m";
-const BOLD: &str = "\x1b[1m";
-const DIM: &str = "\x1b[2m";
-const BLACK: &str = "\x1b[30m";
-const GREEN: &str = "\x1b[32m";
-const BLUE: &str = "\x1b[34m";
-const CYAN: &str = "\x1b[36m";
-const YELLOW: &str = "\x1b[33m";
-const RED: &str = "\x1b[31m";
-const BG_CYAN: &str = "\x1b[46m";
-const WHITE: &str = "\x1b[37m";
-
-// Unicode characters for tree structure
-const CIRCLE: &str = "●";
-const CIRCLE_FILLED: &str = "◉";
-const VERTICAL: &str = "│";
-const BRANCH_START: &str = "╭─";
-const BRANCH_MID: &str = "├─";
-const BRANCH_END: &str = "└─";
+use crate::output::{
+    err_print, ok, print_header, BLUE, BOLD, BG_CYAN, BLACK, BRANCH_END, BRANCH_MID, BRANCH_START,
+    CIRCLE, CIRCLE_FILLED, CYAN, DIM, GREEN, RED, RESET, VERTICAL, WHITE, YELLOW,
+};
 
 /// Enhanced TUI selector with colors and tree structure.
 /// Returns the index of the selected item, or None if aborted.
 fn select_interactive(items: &[(String, &str)]) -> Option<usize> {
     use std::io::BufReader;
-    
+
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let mut reader = BufReader::new(stdin);
@@ -44,23 +26,24 @@ fn select_interactive(items: &[(String, &str)]) -> Option<usize> {
     loop {
         // Clear screen and redraw
         print!("\x1b[2J\x1b[H");
-        
+
         // Header with styling
-        println!("{}{}╭─────────────────────────────────────╮{}", CYAN, BOLD, RESET);
-        println!("{}{}│  {}Stack Branch Selector{}             │{}", CYAN, BOLD, WHITE, CYAN, RESET);
-        println!("{}{}╰─────────────────────────────────────╯{}", CYAN, BOLD, RESET);
+        println!("{CYAN}{BOLD}╭─────────────────────────────────────╮{RESET}");
+        println!("{CYAN}{BOLD}│  {WHITE}Stack Branch Selector{CYAN}             │{RESET}");
+        println!("{CYAN}{BOLD}╰─────────────────────────────────────╯{RESET}");
         println!();
-        
+
         // Instructions with colors
-        println!("{}Use {}↑↓{} or {}j/k{} to move, {}Enter{} to select, {}Esc/q{} to cancel:", 
-                 DIM, YELLOW, DIM, YELLOW, DIM, GREEN, DIM, RED, RESET);
+        println!(
+            "{DIM}Use {YELLOW}↑↓{DIM} or {YELLOW}j/k{DIM} to move, {GREEN}Enter{DIM} to select, {RED}Esc/q{DIM} to cancel:{RESET}"
+        );
         println!();
 
         // Draw the tree structure
         for (i, (name, suffix)) in items.iter().enumerate() {
             let is_current = suffix.contains("current");
             let is_missing = suffix.contains("missing");
-            
+
             // Tree connector
             let connector_char = if items.len() == 1 {
                 BRANCH_END
@@ -71,52 +54,52 @@ fn select_interactive(items: &[(String, &str)]) -> Option<usize> {
             } else {
                 BRANCH_MID
             };
-            let connector = format!("{}{}{} ", CYAN, connector_char, RESET);
-            
+            let connector = format!("{CYAN}{connector_char}{RESET} ");
+
             // Selection indicator with background
             let selection = if i == selected {
-                format!("{}{}►{} ", BG_CYAN, BLACK, RESET)
+                format!("{BG_CYAN}{BLACK}►{RESET} ")
             } else {
                 "  ".to_string()
             };
-            
+
             // Circle indicator
             let circle = if is_current {
-                format!("{}{}{}", GREEN, CIRCLE_FILLED, RESET)
+                format!("{GREEN}{CIRCLE_FILLED}{RESET}")
             } else if is_missing {
-                format!("{}{}{}", RED, CIRCLE, RESET)
+                format!("{RED}{CIRCLE}{RESET}")
             } else {
-                format!("{}{}{}", BLUE, CIRCLE, RESET)
+                format!("{BLUE}{CIRCLE}{RESET}")
             };
-            
+
             // Branch name with color
             let branch_name = if i == selected {
-                format!("{}{}{}{}{}", BOLD, WHITE, BG_CYAN, name, RESET)
+                format!("{BOLD}{WHITE}{BG_CYAN}{name}{RESET}")
             } else if is_current {
-                format!("{}{}{}", BOLD, GREEN, name)
+                format!("{BOLD}{GREEN}{name}")
             } else if is_missing {
-                format!("{}{}{}", DIM, RED, name)
+                format!("{DIM}{RED}{name}")
             } else {
-                format!("{}{}", WHITE, name)
+                format!("{WHITE}{name}")
             };
-            
+
             // Suffix with styling
             let styled_suffix = if is_current {
-                format!("{}{}{}{}", DIM, GREEN, suffix, RESET)
+                format!("{DIM}{GREEN}{suffix}{RESET}")
             } else if is_missing {
-                format!("{}{}{}{}", DIM, RED, suffix, RESET)
+                format!("{DIM}{RED}{suffix}{RESET}")
             } else {
                 suffix.to_string()
             };
-            
-            println!("{}{}{} {}", connector, selection, circle, branch_name);
+
+            println!("{connector}{selection}{circle} {branch_name}");
             if !styled_suffix.is_empty() {
-                println!("         {}{}", DIM, styled_suffix);
+                println!("         {DIM}{styled_suffix}");
             }
-            
+
             // Add connecting line for non-last items
             if i < items.len() - 1 {
-                println!("{}{}   {}", CYAN, VERTICAL, RESET);
+                println!("{CYAN}{VERTICAL}{RESET}   ");
             }
         }
 
@@ -131,15 +114,15 @@ fn select_interactive(items: &[(String, &str)]) -> Option<usize> {
                         // Escape sequence - try to read more bytes immediately
                         let mut seq_buf = [0u8; 2];
                         let mut total_read = 0;
-                        
+
                         // Try to read up to 2 more bytes without blocking too long
                         for i in 0..2 {
-                            match reader.read(&mut seq_buf[i..i+1]) {
+                            match reader.read(&mut seq_buf[i..i + 1]) {
                                 Ok(1) => total_read += 1,
                                 _ => break,
                             }
                         }
-                        
+
                         if total_read == 2 && seq_buf[0] == b'[' {
                             match seq_buf[1] {
                                 b'A' => {
@@ -169,7 +152,7 @@ fn select_interactive(items: &[(String, &str)]) -> Option<usize> {
                         }
                     }
                     b'k' | b'K' => {
-                        // k for up  
+                        // k for up
                         if selected > 0 {
                             selected -= 1;
                         }
@@ -189,9 +172,7 @@ fn select_interactive(items: &[(String, &str)]) -> Option<usize> {
 /// Enable terminal raw mode for single-key input.
 fn enable_raw_mode() -> impl Drop {
     // Save current settings and set raw mode with minimal flags
-    let _ = Command::new("stty")
-        .args(["-echo", "-icanon"])
-        .status();
+    let _ = Command::new("stty").args(["-echo", "-icanon"]).status();
     RawModeGuard
 }
 
@@ -200,9 +181,7 @@ struct RawModeGuard;
 impl Drop for RawModeGuard {
     fn drop(&mut self) {
         // Restore terminal mode
-        let _ = Command::new("stty")
-            .args(["echo", "icanon"])
-            .status();
+        let _ = Command::new("stty").args(["echo", "icanon"]).status();
     }
 }
 
@@ -260,15 +239,13 @@ pub fn cmd_checkout(ctx: &Ctx, name: &str) -> Result<CmdResult> {
     } else {
         // User cancelled
         println!();
-        return Ok(Ok(()));
+        Ok(Ok(()))
     }
 }
 
 /// Enhanced numbered selection fallback for non-TTY environments.
 fn select_simple(items: &[(String, &str)]) -> Option<usize> {
-    println!("{}╭─────────────────────────────────────╮{}", CYAN, RESET);
-    println!("{}│  {}Select a branch to checkout:{}         │{}", CYAN, WHITE, CYAN, RESET);
-    println!("{}╰─────────────────────────────────────╯{}", CYAN, RESET);
+    print_header("Select a branch to checkout:");
     println!();
 
     for (i, (name, suffix)) in items.iter().enumerate() {
@@ -276,41 +253,41 @@ fn select_simple(items: &[(String, &str)]) -> Option<usize> {
         let is_missing = suffix.contains("missing");
 
         let number = if is_current {
-            format!("{}{}{}{}.", BOLD, GREEN, i + 1, RESET)
+            format!("{BOLD}{GREEN}{}.{RESET}", i + 1)
         } else {
-            format!("{}{}.", DIM, i + 1)
+            format!("{DIM}{}.", i + 1)
         };
 
         let circle = if is_current {
-            format!("{}{}{}", GREEN, CIRCLE_FILLED, RESET)
+            format!("{GREEN}{CIRCLE_FILLED}{RESET}")
         } else if is_missing {
-            format!("{}{}{}", RED, CIRCLE, RESET)
+            format!("{RED}{CIRCLE}{RESET}")
         } else {
-            format!("{}{}{}", BLUE, CIRCLE, RESET)
+            format!("{BLUE}{CIRCLE}{RESET}")
         };
 
         let branch_name = if is_current {
-            format!("{}{}{}", BOLD, GREEN, name)
+            format!("{BOLD}{GREEN}{name}")
         } else if is_missing {
-            format!("{}{}{}", DIM, RED, name)
+            format!("{DIM}{RED}{name}")
         } else {
-            format!("{}{}", WHITE, name)
+            format!("{WHITE}{name}")
         };
 
         let styled_suffix = if is_current {
-            format!(" {}{}(current){}", DIM, GREEN, RESET)
+            format!(" {DIM}{GREEN}(current){RESET}")
         } else if is_missing {
-            format!(" {}{}(missing){}", DIM, RED, RESET)
+            format!(" {DIM}{RED}(missing){RESET}")
         } else {
-            "".to_string()
+            String::new()
         };
 
-        println!("  {} {} {}{}", number, circle, branch_name, styled_suffix);
+        println!("  {number} {circle} {branch_name}{styled_suffix}");
     }
 
     println!();
     loop {
-        eprint!("{}Enter number (1-{}): {}{}", CYAN, items.len(), YELLOW, RESET);
+        eprint!("{CYAN}Enter number (1-{}): {YELLOW}{RESET}", items.len());
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
             Ok(0) => return None, // EOF
@@ -322,11 +299,11 @@ fn select_simple(items: &[(String, &str)]) -> Option<usize> {
                 match trimmed.parse::<usize>() {
                     Ok(n) if 1 <= n && n <= items.len() => return Some(n - 1),
                     Ok(_) => {
-                        eprintln!("{}Enter a number between 1 and {}{}.", RED, items.len(), RESET);
+                        eprintln!("{RED}Enter a number between 1 and {}.{RESET}", items.len());
                         continue;
                     }
                     Err(_) => {
-                        eprintln!("{}Invalid input. Enter a number.{}", RED, RESET);
+                        eprintln!("{RED}Invalid input. Enter a number.{RESET}");
                         continue;
                     }
                 }

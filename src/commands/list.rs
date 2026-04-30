@@ -4,7 +4,7 @@ use std::fs;
 use crate::config::load_stack;
 use crate::ctx::Ctx;
 use crate::errors::CmdResult;
-use crate::output::info;
+use crate::output::{info, BOLD, CYAN, DIM, RED, RESET, WHITE};
 
 pub fn cmd_list(ctx: &Ctx) -> Result<CmdResult> {
     if !ctx.stacks_dir.exists() {
@@ -22,19 +22,24 @@ pub fn cmd_list(ctx: &Ctx) -> Result<CmdResult> {
         return Ok(Ok(()));
     }
 
-    for entry in entries {
+    for (idx, entry) in entries.iter().enumerate() {
+        if idx > 0 {
+            println!();
+        }
         let name = entry.file_name().to_string_lossy().to_string();
         match load_stack(ctx, &name) {
             Ok(stack) => {
-                println!("{name}");
-                println!("  base: {}", stack.base);
+                println!("{BOLD}{CYAN}{name}{RESET}");
+                println!("  {DIM}base:{RESET} {WHITE}{}{RESET}", stack.base);
                 if stack.branches.is_empty() {
-                    println!("  branches: (none yet)");
+                    println!("  {DIM}branches: (none yet){RESET}");
                 } else {
-                    println!("  branches: {}", stack.branches.join(" -> "));
+                    // Show branches as a inline chain with arrows
+                    let chain = stack.branches.join(&format!(" {DIM}→{RESET} {WHITE}"));
+                    println!("  {DIM}branches:{RESET} {WHITE}{chain}{RESET}");
                 }
             }
-            Err(_) => println!("{name} (invalid)"),
+            Err(_) => println!("{BOLD}{RED}{name}{RESET} {DIM}(invalid){RESET}"),
         }
     }
     Ok(Ok(()))
