@@ -136,13 +136,21 @@ pub fn print_branch_tree(rows: &[BranchRow<'_>]) {
 
         println!("{CYAN}{connector}{RESET} {circle} {name_styled}{tag_str}");
 
-        // Detail lines — printed verbatim with a fixed indent, no extra styling.
+        // For non-last rows the │ must run continuously alongside detail lines.
+        let is_last = i == rows.len() - 1;
+        let prefix = if is_last {
+            format!("     ")           // 5 spaces — no continuation bar
+        } else {
+            format!("{CYAN}{VERTICAL}{RESET}    ")  // │ + 4 spaces
+        };
+
+        // Detail lines — printed verbatim with a continuous-bar prefix.
         for line in &row.detail {
-            println!("     {line}");
+            println!("{prefix}{line}");
         }
 
-        // Vertical connector between items
-        if i < rows.len() - 1 {
+        // Blank gap line with │ (only between items, not after the last one)
+        if !is_last {
             println!("{CYAN}{VERTICAL}{RESET}");
         }
     }
