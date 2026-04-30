@@ -578,7 +578,7 @@ fn do_rebase(ctx: &Ctx, name: &str, remote: &str, do_fetch: bool) -> Result<i32>
     ok(&format!("Stack '{name}' rebased successfully ({count} branch{plural})."));
     let branch_list = branches.join(" ");
     info(&format!(
-        "Next: review with 'git log --oneline --graph {base} {branch_list}', then 'git push --force-with-lease' each branch."
+        "Next: review with 'git log --oneline --graph {base} {branch_list}', then 'sd push {name}'."
     ));
     Ok(0)
 }
