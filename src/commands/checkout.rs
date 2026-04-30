@@ -46,7 +46,7 @@ fn select_interactive(items: &[(String, &str)]) -> Option<usize> {
         
         // Header with styling
         println!("{}{}╭─────────────────────────────────────╮{}", CYAN, BOLD, RESET);
-        println!("{}{}│  {}Stack Branch Selector{}            │{}", CYAN, BOLD, WHITE, CYAN, RESET);
+        println!("{}{}│  {}Stack Branch Selector{}             │{}", CYAN, BOLD, WHITE, CYAN, RESET);
         println!("{}{}╰─────────────────────────────────────╯{}", CYAN, BOLD, RESET);
         println!();
         
@@ -268,7 +268,7 @@ fn select_simple(ctx: &Ctx, all: &[String]) -> Option<usize> {
     let current_branch = git(ctx, &["rev-parse", "--abbrev-ref", "HEAD"]).ok();
     
     println!("{}╭─────────────────────────────────────╮{}", CYAN, RESET);
-    println!("{}│  {}Select a branch to checkout:{}        │{}", CYAN, WHITE, CYAN, RESET);
+    println!("{}│  {}Select a branch to checkout:{}         │{}", CYAN, WHITE, CYAN, RESET);
     println!("{}╰─────────────────────────────────────╯{}", CYAN, RESET);
     println!();
     
