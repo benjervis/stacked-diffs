@@ -245,7 +245,7 @@ pub fn cmd_checkout(ctx: &Ctx, name: &str) -> Result<CmdResult> {
 
 /// Enhanced numbered selection fallback for non-TTY environments.
 fn select_simple(items: &[(String, &str)]) -> Option<usize> {
-    print_header("Select a branch to checkout:");
+    print_header("Select a branch to checkout:", None);
     println!();
 
     for (i, (name, suffix)) in items.iter().enumerate() {

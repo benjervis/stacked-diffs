@@ -438,7 +438,7 @@ test_show_subcommand() {
     local out
     run_rs "$repo" show test-stack; out=$OUT
     assert_eq "$TEST_EXIT" 0 "show should succeed" || { echo "$out"; return 1; }
-    assert_contains "$out" "Stack: test-stack" "should print stack name" || return 1
+    assert_contains "$out" "test-stack" "should print stack name" || return 1
     assert_contains "$out" "main" "should print base" || return 1
     assert_contains "$out" "feature-a" "should print feature-a" || return 1
     assert_contains "$out" "feature-b" "should print feature-b" || return 1
@@ -452,7 +452,7 @@ test_status_subcommand() {
     local out
     run_rs "$repo" status test-stack; out=$OUT
     assert_eq "$TEST_EXIT" 0 "status should succeed" || { echo "$out"; return 1; }
-    assert_contains "$out" "Stack: test-stack" "should print header" || return 1
+    assert_contains "$out" "test-stack" "should print header" || return 1
     assert_contains "$out" "feature-a" "should list feature-a" || return 1
     assert_contains "$out" "feature-c" "should list feature-c" || return 1
     assert_contains "$out" "ahead of feature-b" "feature-c should be ahead of feature-b" || return 1

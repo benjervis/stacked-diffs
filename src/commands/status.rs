@@ -1,15 +1,16 @@
 use anyhow::Result;
-use std::fmt::Write as FmtWrite;
 
 use crate::config::load_stack;
 use crate::ctx::{branch_exists, git, git_silent, short, tip, Ctx};
 use crate::errors::CmdResult;
-use crate::output::{print_branch_tree, print_header, BranchRow, BranchTag, DIM, GREEN, RESET, YELLOW};
+use crate::output::{
+    print_branch_tree, print_header, BranchRow, BranchTag, DIM, GREEN, RESET, YELLOW,
+};
 
 pub fn cmd_status(ctx: &Ctx, name: &str, remote: &str) -> Result<CmdResult> {
     let stack = load_stack(ctx, name)?;
 
-    print_header(&format!("Stack: {name}  {DIM}remote: {remote}{RESET}"));
+    print_header(name, Some(&format!("remote: {remote}")));
     println!();
 
     let current_branch = git(ctx, &["rev-parse", "--abbrev-ref", "HEAD"]).ok();
@@ -35,7 +36,7 @@ pub fn cmd_status(ctx: &Ctx, name: &str, remote: &str) -> Result<CmdResult> {
             rows.push(BranchRow {
                 name: r#ref,
                 tag,
-                detail: Some("missing locally".to_string()),
+                detail: vec![format!("{DIM}missing locally{RESET}")],
             });
             prev = r#ref.clone();
             continue;
@@ -45,8 +46,10 @@ pub fn cmd_status(ctx: &Ctx, name: &str, remote: &str) -> Result<CmdResult> {
         let subject = git(ctx, &["log", "-1", "--format=%s", &sha])?;
         let short_sha = short(&sha);
 
-        // Build detail string: commit + (for non-base) ahead/behind + remote info
-        let mut detail = format!("{DIM}{short_sha}{RESET}  {subject}");
+        // Line 1: short SHA + commit subject
+        let commit_line = format!("{DIM}{short_sha}{RESET}  {subject}");
+
+        let mut detail = vec![commit_line];
 
         if r#ref != &stack.base {
             let counts = git(
@@ -62,15 +65,15 @@ pub fn cmd_status(ctx: &Ctx, name: &str, remote: &str) -> Result<CmdResult> {
             let behind: u64 = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
             let ahead: u64 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
 
-            let parent_color = if behind > 0 { YELLOW } else { GREEN };
-            let mut parent_info = format!("{parent_color}+{ahead}{RESET}");
-            if behind > 0 {
-                write!(parent_info, " {YELLOW}-{behind} behind {prev} (rebase needed){RESET}").unwrap();
+            let parent_str = if behind > 0 {
+                format!(
+                    "{YELLOW}+{ahead}  -{behind} behind {prev} (rebase needed){RESET}"
+                )
             } else {
-                write!(parent_info, " {DIM}ahead of {prev}{RESET}").unwrap();
-            }
+                format!("{GREEN}+{ahead}{RESET}  {DIM}ahead of {prev}{RESET}")
+            };
 
-            let remote_info = if git_silent(
+            let remote_str = if git_silent(
                 ctx,
                 &["rev-parse", "--verify", &format!("{remote}/{ref}")],
             ) {
@@ -95,13 +98,14 @@ pub fn cmd_status(ctx: &Ctx, name: &str, remote: &str) -> Result<CmdResult> {
                 format!("{DIM}no {remote} tracking ref{RESET}")
             };
 
-            write!(detail, "\n     {parent_info}  {DIM}│{RESET}  {remote_info}").unwrap();
+            // Line 2: ahead/behind parent  |  remote sync
+            detail.push(format!("{parent_str}  {DIM}│{RESET}  {remote_str}"));
         }
 
         rows.push(BranchRow {
             name: r#ref,
             tag,
-            detail: Some(detail),
+            detail,
         });
         prev = r#ref.clone();
     }

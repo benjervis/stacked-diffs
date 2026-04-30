@@ -47,8 +47,9 @@ pub struct BranchRow<'a> {
     pub name: &'a str,
     /// Annotation shown after the name, e.g. "(current)" or "(missing)".
     pub tag: BranchTag,
-    /// Optional second line of detail shown below the branch name.
-    pub detail: Option<String>,
+    /// Extra lines printed below the branch name, already styled.
+    /// Each entry is printed as its own indented line; no extra styling is added.
+    pub detail: Vec<String>,
 }
 
 pub enum BranchTag {
@@ -57,17 +58,48 @@ pub enum BranchTag {
     Normal,
 }
 
-/// Print a header box, e.g.
-///   ╭─────────────────────────────╮
-///   │  <title>                    │
-///   ╰─────────────────────────────╯
-pub fn print_header(title: &str) {
-    // Fixed 37-char inner width to match the checkout TUI
+/// Strip ANSI escape sequences from `s` to get the visible character count.
+fn visible_len(s: &str) -> usize {
+    let mut len = 0;
+    let mut in_escape = false;
+    for ch in s.chars() {
+        if in_escape {
+            if ch == 'm' {
+                in_escape = false;
+            }
+            // skip all chars inside an escape sequence
+        } else if ch == '\x1b' {
+            in_escape = true;
+        } else {
+            len += 1;
+        }
+    }
+    len
+}
+
+/// Print a header box:
+///   ╭─────────────────────────────────────╮
+///   │  <title>  <subtitle>                │
+///   ╰─────────────────────────────────────╯
+///
+/// `title` is shown in white/bold; `subtitle` (optional) is shown dim.
+/// Both may contain ANSI codes — visible width is measured correctly.
+pub fn print_header(title: &str, subtitle: Option<&str>) {
+    const INNER: usize = 37; // visible chars between the two │ borders
+
     println!("{CYAN}{BOLD}╭─────────────────────────────────────╮{RESET}");
-    // Title padded to 35 chars (box inner = 37, two spaces margin)
-    let padded = format!("  {title}");
-    let pad_len = 37usize.saturating_sub(padded.len());
-    println!("{CYAN}{BOLD}│{WHITE}{padded}{}{CYAN}│{RESET}", " ".repeat(pad_len));
+
+    let title_part = format!("{WHITE}{BOLD}{title}{RESET}");
+    let sub_part = match subtitle {
+        Some(s) => format!("  {DIM}{s}{RESET}"),
+        None => String::new(),
+    };
+    // Two leading spaces of margin
+    let content = format!("  {title_part}{sub_part}");
+    let visible = 2 + visible_len(title) + if subtitle.is_some() { 2 + visible_len(subtitle.unwrap()) } else { 0 };
+    let pad = INNER.saturating_sub(visible);
+    println!("{CYAN}{BOLD}│{RESET}{content}{}{CYAN}{BOLD}│{RESET}", " ".repeat(pad));
+
     println!("{CYAN}{BOLD}╰─────────────────────────────────────╯{RESET}");
 }
 
@@ -87,26 +119,26 @@ pub fn print_branch_tree(rows: &[BranchRow<'_>]) {
         let circle = match row.tag {
             BranchTag::Current => format!("{GREEN}{CIRCLE_FILLED}{RESET}"),
             BranchTag::Missing => format!("{RED}{CIRCLE}{RESET}"),
-            BranchTag::Normal => format!("{BLUE}{CIRCLE}{RESET}"),
+            BranchTag::Normal  => format!("{BLUE}{CIRCLE}{RESET}"),
         };
 
         let name_styled = match row.tag {
             BranchTag::Current => format!("{BOLD}{GREEN}{}{RESET}", row.name),
             BranchTag::Missing => format!("{DIM}{RED}{}{RESET}", row.name),
-            BranchTag::Normal => format!("{WHITE}{}{RESET}", row.name),
+            BranchTag::Normal  => format!("{WHITE}{}{RESET}", row.name),
         };
 
         let tag_str = match row.tag {
             BranchTag::Current => format!("  {DIM}{GREEN}(current){RESET}"),
             BranchTag::Missing => format!("  {DIM}{RED}(missing){RESET}"),
-            BranchTag::Normal => String::new(),
+            BranchTag::Normal  => String::new(),
         };
 
         println!("{CYAN}{connector}{RESET} {circle} {name_styled}{tag_str}");
 
-        if let Some(detail) = &row.detail {
-            // Indent to align under the branch name
-            println!("     {DIM}{detail}{RESET}");
+        // Detail lines — printed verbatim with a fixed indent, no extra styling.
+        for line in &row.detail {
+            println!("     {line}");
         }
 
         // Vertical connector between items

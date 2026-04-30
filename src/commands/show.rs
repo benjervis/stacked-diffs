@@ -8,7 +8,7 @@ use crate::output::{print_branch_tree, print_header, BranchRow, BranchTag, BOLD,
 pub fn cmd_show(ctx: &Ctx, name: &str) -> Result<CmdResult> {
     let stack = load_stack(ctx, name)?;
 
-    print_header(&format!("Stack: {name}"));
+    print_header(name, None);
     println!();
 
     let current_branch = git(ctx, &["rev-parse", "--abbrev-ref", "HEAD"]).ok();
@@ -24,7 +24,7 @@ pub fn cmd_show(ctx: &Ctx, name: &str) -> Result<CmdResult> {
         print_branch_tree(&[BranchRow {
             name: base,
             tag,
-            detail: None,
+            detail: vec![],
         }]);
         println!();
         println!("{CYAN}{BOLD}  base{RESET} — no stacked branches yet");
@@ -34,7 +34,7 @@ pub fn cmd_show(ctx: &Ctx, name: &str) -> Result<CmdResult> {
             .map(|branch| BranchRow {
                 name: branch,
                 tag: branch_tag(ctx, branch, current_branch.as_deref()),
-                detail: None,
+                detail: vec![],
             })
             .collect();
         print_branch_tree(&rows);
