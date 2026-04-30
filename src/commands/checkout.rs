@@ -7,7 +7,27 @@ use crate::ctx::{branch_exists, git, git_ok, Ctx};
 use crate::errors::{CmdError, CmdResult};
 use crate::output::{err_print, ok};
 
-/// Simple TUI selector using terminal control sequences.
+// Color constants for terminal output
+const RESET: &str = "\x1b[0m";
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
+const BLACK: &str = "\x1b[30m";
+const GREEN: &str = "\x1b[32m";
+const BLUE: &str = "\x1b[34m";
+const CYAN: &str = "\x1b[36m";
+const YELLOW: &str = "\x1b[33m";
+const RED: &str = "\x1b[31m";
+const BG_CYAN: &str = "\x1b[46m";
+const WHITE: &str = "\x1b[37m";
+
+// Unicode characters for tree structure
+const CIRCLE: &str = "●";
+const CIRCLE_FILLED: &str = "◉";
+const VERTICAL: &str = "│";
+const BRANCH_DOWN: &str = "└─";
+const BRANCH_RIGHT: &str = "├─";
+
+/// Enhanced TUI selector with colors and tree structure.
 /// Returns the index of the selected item, or None if aborted.
 fn select_interactive(items: &[(String, &str)]) -> Option<usize> {
     use std::io::BufReader;
@@ -23,16 +43,77 @@ fn select_interactive(items: &[(String, &str)]) -> Option<usize> {
     loop {
         // Clear screen and redraw
         print!("\x1b[2J\x1b[H");
-        println!("Use ↑↓ or j/k to move, Enter to select, Esc/q to cancel:");
+        
+        // Header with styling
+        println!("{}{}╭─────────────────────────────────────╮{}", CYAN, BOLD, RESET);
+        println!("{}{}│  {}Stack Branch Selector{}            │{}", CYAN, BOLD, WHITE, CYAN, RESET);
+        println!("{}{}╰─────────────────────────────────────╯{}", CYAN, BOLD, RESET);
+        println!();
+        
+        // Instructions with colors
+        println!("{}Use {}↑↓{} or {}j/k{} to move, {}Enter{} to select, {}Esc/q{} to cancel:", 
+                 DIM, YELLOW, DIM, YELLOW, DIM, GREEN, DIM, RED, RESET);
         println!();
 
+        // Draw the tree structure
         for (i, (name, suffix)) in items.iter().enumerate() {
-            if i == selected {
-                print!("> \x1b[7m{}{}\x1b[0m", name, suffix);
+            let is_current = suffix.contains("current");
+            let is_missing = suffix.contains("missing");
+            
+            // Tree connector
+            let connector = if i == 0 {
+                format!("{}{}{} ", CYAN, BRANCH_DOWN, RESET)
+            } else if i == items.len() - 1 {
+                format!("{}{}{} ", CYAN, BRANCH_DOWN, RESET)
             } else {
-                print!("  {}{}", name, suffix);
+                format!("{}{}{} ", CYAN, BRANCH_RIGHT, RESET)
+            };
+            
+            // Selection indicator with background
+            let selection = if i == selected {
+                format!("{}{}►{} ", BG_CYAN, BLACK, RESET)
+            } else {
+                "  ".to_string()
+            };
+            
+            // Circle indicator
+            let circle = if is_current {
+                format!("{}{}{}", GREEN, CIRCLE_FILLED, RESET)
+            } else if is_missing {
+                format!("{}{}{}", RED, CIRCLE, RESET)
+            } else {
+                format!("{}{}{}", BLUE, CIRCLE, RESET)
+            };
+            
+            // Branch name with color
+            let branch_name = if i == selected {
+                format!("{}{}{}{}{}", BOLD, WHITE, BG_CYAN, name, RESET)
+            } else if is_current {
+                format!("{}{}{}", BOLD, GREEN, name)
+            } else if is_missing {
+                format!("{}{}{}", DIM, RED, name)
+            } else {
+                format!("{}{}", WHITE, name)
+            };
+            
+            // Suffix with styling
+            let styled_suffix = if is_current {
+                format!("{}{}{}{}", DIM, GREEN, suffix, RESET)
+            } else if is_missing {
+                format!("{}{}{}{}", DIM, RED, suffix, RESET)
+            } else {
+                suffix.to_string()
+            };
+            
+            println!("{}{}{} {}", connector, selection, circle, branch_name);
+            if !styled_suffix.is_empty() {
+                println!("         {}{}", DIM, styled_suffix);
             }
-            println!();
+            
+            // Add connecting line for non-last items
+            if i < items.len() - 1 {
+                println!("{}{}   {}", CYAN, VERTICAL, RESET);
+            }
         }
 
         stdout.flush().unwrap();
@@ -156,7 +237,7 @@ pub fn cmd_checkout(ctx: &Ctx, name: &str) -> Result<CmdResult> {
         select_interactive(&items)
     } else {
         // Fallback to simple numbered selection for non-interactive environments
-        select_simple(&all)
+        select_simple(ctx, &all)
     };
 
     if let Some(selected) = selected {
@@ -179,17 +260,58 @@ pub fn cmd_checkout(ctx: &Ctx, name: &str) -> Result<CmdResult> {
     }
 }
 
-/// Simple numbered selection fallback for non-TTY environments.
-fn select_simple(all: &[String]) -> Option<usize> {
+/// Enhanced numbered selection fallback for non-TTY environments.
+fn select_simple(ctx: &Ctx, all: &[String]) -> Option<usize> {
     use std::io;
-    println!("Select a branch to checkout:");
-    for (i, branch) in all.iter().enumerate() {
-        println!("  {}. {}", i + 1, branch);
-    }
+    
+    // Get current branch for highlighting
+    let current_branch = git(ctx, &["rev-parse", "--abbrev-ref", "HEAD"]).ok();
+    
+    println!("{}╭─────────────────────────────────────╮{}", CYAN, RESET);
+    println!("{}│  {}Select a branch to checkout:{}        │{}", CYAN, WHITE, CYAN, RESET);
+    println!("{}╰─────────────────────────────────────╯{}", CYAN, RESET);
     println!();
-
+    
+    for (i, branch) in all.iter().enumerate() {
+        let is_current = current_branch.as_deref() == Some(branch.as_str());
+        let is_missing = !branch_exists(ctx, branch);
+        
+        let number = if is_current {
+            format!("{}{}{}{}.", BOLD, GREEN, i + 1, RESET)
+        } else {
+            format!("{}{}.", DIM, i + 1)
+        };
+        
+        let circle = if is_current {
+            format!("{}{}{}", GREEN, CIRCLE_FILLED, RESET)
+        } else if is_missing {
+            format!("{}{}{}", RED, CIRCLE, RESET)
+        } else {
+            format!("{}{}{}", BLUE, CIRCLE, RESET)
+        };
+        
+        let branch_name = if is_current {
+            format!("{}{}{}", BOLD, GREEN, branch)
+        } else if is_missing {
+            format!("{}{}{}", DIM, RED, branch)
+        } else {
+            format!("{}{}", WHITE, branch)
+        };
+        
+        let suffix = if is_current {
+            format!(" {}{}(current){}", DIM, GREEN, RESET)
+        } else if is_missing {
+            format!(" {}{}(missing){}", DIM, RED, RESET)
+        } else {
+            "".to_string()
+        };
+        
+        println!("  {} {} {}{}", number, circle, branch_name, suffix);
+    }
+    
+    println!();
     loop {
-        eprint!("Enter number (1-{}): ", all.len());
+        eprint!("{}Enter number (1-{}): {}{}", CYAN, all.len(), YELLOW, RESET);
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
             Ok(0) => return None, // EOF
@@ -201,11 +323,11 @@ fn select_simple(all: &[String]) -> Option<usize> {
                 match trimmed.parse::<usize>() {
                     Ok(n) if 1 <= n && n <= all.len() => return Some(n - 1),
                     Ok(_) => {
-                        eprintln!("Enter a number between 1 and {}.", all.len());
+                        eprintln!("{}Enter a number between 1 and {}{}.", RED, all.len(), RESET);
                         continue;
                     }
                     Err(_) => {
-                        eprintln!("Invalid input. Enter a number.");
+                        eprintln!("{}Invalid input. Enter a number.{}", RED, RESET);
                         continue;
                     }
                 }
