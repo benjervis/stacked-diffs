@@ -39,20 +39,36 @@ enum Cmd {
         scan: bool,
     },
     /// Create a branch off the top of the stack and append to config
-    Add { stack: String, branch: String },
+    ///
+    /// With one argument: sd add <branch>  (auto-detects stack if only one exists)
+    /// With two arguments: sd add <stack> <branch>
+    Add {
+        /// Stack name, or branch name if only one stack exists
+        stack_or_branch: String,
+        /// Branch name (required when stack name is also given)
+        branch: Option<String>,
+    },
     /// Remove a branch from the config (does NOT delete the local branch)
-    Rm { stack: String, branch: String },
+    ///
+    /// With one argument: sd rm <branch>  (auto-detects stack if only one exists)
+    /// With two arguments: sd rm <stack> <branch>
+    Rm {
+        /// Stack name, or branch name if only one stack exists
+        stack_or_branch: String,
+        /// Branch name (required when stack name is also given)
+        branch: Option<String>,
+    },
     /// Print the stack chain in one line
-    Show { stack: String },
+    Show { stack: Option<String> },
     /// Show per-branch tip + ahead/behind state
     Status {
-        stack: String,
+        stack: Option<String>,
         #[arg(long)]
         remote: Option<String>,
     },
     /// Rebase every branch in the stack onto its parent
     Rebase {
-        stack: String,
+        stack: Option<String>,
         #[arg(long = "no-fetch")]
         no_fetch: bool,
         #[arg(long)]
@@ -62,7 +78,7 @@ enum Cmd {
     },
     /// git push --force-with-lease each branch
     Push {
-        stack: String,
+        stack: Option<String>,
         #[arg(long)]
         remote: Option<String>,
     },
@@ -301,6 +317,31 @@ Stack config: .stacks/<stack-name>
   Remaining non-comment lines: stack branches in order, bottom to top
   Lines starting with '#' and blank lines are ignored"#
     );
+}
+
+/// Resolve a stack name: use the provided one, or auto-detect if there's
+/// exactly one stack in .stacks/. Errors clearly if zero or >1 stacks exist.
+fn resolve_stack(ctx: &Ctx, name: Option<&str>) -> Result<String> {
+    if let Some(n) = name {
+        return Ok(n.to_string());
+    }
+    if !ctx.stacks_dir.exists() {
+        bail!("No .stacks/ directory found. Create a stack with 'sd init <stack>'.");
+    }
+    let mut stacks: Vec<String> = fs::read_dir(&ctx.stacks_dir)?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_file())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    stacks.sort();
+    match stacks.len() {
+        0 => bail!("No stacks configured. Create one with 'sd init <stack>'."),
+        1 => Ok(stacks.remove(0)),
+        _ => bail!(
+            "Multiple stacks found ({}). Specify one explicitly.",
+            stacks.join(", ")
+        ),
+    }
 }
 
 fn cmd_list(ctx: &Ctx) -> Result<i32> {
@@ -1008,10 +1049,26 @@ fn run() -> Result<i32> {
         let ctx = Ctx::new()?;
         return match cli.command {
             Cmd::Init { stack, base, scan } => cmd_init(&ctx, &stack, base.as_deref(), scan),
-            Cmd::Add { stack, branch } => cmd_add(&ctx, &stack, &branch),
-            Cmd::Rm { stack, branch } => cmd_rm(&ctx, &stack, &branch),
-            Cmd::Show { stack } => cmd_show(&ctx, &stack),
+            Cmd::Add { stack_or_branch, branch } => {
+                let (stack, branch) = match branch {
+                    Some(b) => (stack_or_branch, b),
+                    None => (resolve_stack(&ctx, None)?, stack_or_branch),
+                };
+                cmd_add(&ctx, &stack, &branch)
+            }
+            Cmd::Rm { stack_or_branch, branch } => {
+                let (stack, branch) = match branch {
+                    Some(b) => (stack_or_branch, b),
+                    None => (resolve_stack(&ctx, None)?, stack_or_branch),
+                };
+                cmd_rm(&ctx, &stack, &branch)
+            }
+            Cmd::Show { stack } => {
+                let stack = resolve_stack(&ctx, stack.as_deref())?;
+                cmd_show(&ctx, &stack)
+            }
             Cmd::Status { stack, remote } => {
+                let stack = resolve_stack(&ctx, stack.as_deref())?;
                 cmd_status(&ctx, &stack, remote.as_deref().unwrap_or("origin"))
             }
             Cmd::Rebase {
@@ -1020,6 +1077,7 @@ fn run() -> Result<i32> {
                 remote,
                 abort,
             } => {
+                let stack = resolve_stack(&ctx, stack.as_deref())?;
                 let remote = remote.as_deref().unwrap_or("origin");
                 if abort {
                     do_abort(&ctx, &stack)
@@ -1028,6 +1086,7 @@ fn run() -> Result<i32> {
                 }
             }
             Cmd::Push { stack, remote } => {
+                let stack = resolve_stack(&ctx, stack.as_deref())?;
                 cmd_push(&ctx, &stack, remote.as_deref().unwrap_or("origin"))
             }
             Cmd::Completions { shell } => {
