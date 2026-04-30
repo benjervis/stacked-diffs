@@ -541,6 +541,55 @@ test_full_workflow() {
     return 0
 }
 
+# ---------------- --scan tests ----------------
+
+test_scan_detects_stack() {
+    # Set up main → feature-a → feature-b → feature-c, checked out on feature-c
+    local repo
+    repo=$(setup_basic_stack repo_scan)
+    # HEAD is on feature-c after setup_basic_stack
+    local out
+    run_rs "$repo" init my-stack --scan; out=$OUT
+    assert_eq "$TEST_EXIT" 0 "init --scan should succeed" || { echo "$out"; return 1; }
+    [[ -f "$repo/.stacks/my-stack" ]] || { echo "    $(red FAIL): config not created"; return 1; }
+    # Config should contain all three feature branches in order
+    local lines
+    lines=$(grep -v '^#' "$repo/.stacks/my-stack" | grep -v '^$' | tr '\n' ' ')
+    assert_eq "$lines" "main feature-a feature-b feature-c " "config should have branches in order" || return 1
+    return 0
+}
+
+test_scan_on_base_warns() {
+    local repo
+    repo=$(new_repo repo_scan_base)
+    git -C "$repo" commit --quiet --allow-empty -m initial
+    # HEAD is on main
+    local out
+    run_rs "$repo" init my-stack --scan; out=$OUT
+    assert_eq "$TEST_EXIT" 0 "init --scan on base should succeed" || { echo "$out"; return 1; }
+    [[ -f "$repo/.stacks/my-stack" ]] || { echo "    $(red FAIL): config not created"; return 1; }
+    assert_contains "$out" "no branches detected" "should warn about no branches" || return 1
+    # Config should have only the base
+    local lines
+    lines=$(grep -v '^#' "$repo/.stacks/my-stack" | grep -v '^$' | tr '\n' ' ')
+    assert_eq "$lines" "main " "config should have only base" || return 1
+    return 0
+}
+
+test_scan_detached_head_errors() {
+    local repo
+    repo=$(setup_basic_stack repo_scan_detached)
+    # Detach HEAD
+    local sha
+    sha=$(git -C "$repo" rev-parse feature-c)
+    git -C "$repo" checkout --quiet --detach "$sha"
+    local out
+    run_rs "$repo" init my-stack --scan; out=$OUT
+    [[ "$TEST_EXIT" -ne 0 ]] || { echo "    $(red FAIL): expected error for detached HEAD"; return 1; }
+    assert_contains "$out" "detached" "should mention detached HEAD" || return 1
+    return 0
+}
+
 # ---------------- Run them ----------------
 
 run_test "rebase: clean three-branch stack with main moved"      test_clean_rebase
@@ -561,6 +610,9 @@ run_test "status: shows ahead/behind state"                      test_status_sub
 run_test "rm: removes from config but leaves branch"             test_rm_subcommand
 run_test "rebase: works with explicit 'rebase' subcommand"       test_rebase_subcommand_explicit
 run_test "workflow: init → add×3 → main moves → rebase → show"   test_full_workflow
+run_test "init --scan: detects stack from HEAD ancestry"          test_scan_detects_stack
+run_test "init --scan: warns when HEAD is already on base"        test_scan_on_base_warns
+run_test "init --scan: errors on detached HEAD"                   test_scan_detached_head_errors
 
 echo
 echo "============================================"

@@ -33,6 +33,9 @@ enum Cmd {
     Init {
         stack: String,
         base: Option<String>,
+        /// Walk ancestry from HEAD to base and populate the config
+        #[arg(long)]
+        scan: bool,
     },
     /// Create a branch off the top of the stack and append to config
     Add { stack: String, branch: String },
@@ -269,7 +272,8 @@ fn cmd_help() {
   sd <command> [args]
 
 Commands:
-  init <stack> [<base>]              create a new stack config (default base: main)
+  init <stack> [<base>] [--scan]     create a new stack config (default base: main)
+                                       --scan: walk HEAD→base and populate branches
   add <stack> <branch>               create a branch off the top of the stack
                                      and append it to the config
   rm <stack> <branch>                remove a branch from the stack config
@@ -579,7 +583,71 @@ fn do_rebase(ctx: &Ctx, name: &str, remote: &str, do_fetch: bool) -> Result<i32>
     Ok(0)
 }
 
-fn cmd_init(ctx: &Ctx, name: &str, base: Option<&str>) -> Result<i32> {
+/// Walk ancestry from HEAD back to `base`, collecting branch names in order
+/// (top of stack first, so we reverse before writing). Returns branches
+/// ordered bottom-to-top (i.e. ready to append after the base line).
+fn scan_branches(ctx: &Ctx, base: &str) -> Result<Vec<String>> {
+    // Require a named branch (not detached HEAD).
+    let head = git(ctx, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    if head == "HEAD" {
+        bail!("HEAD is detached. Check out a branch before running --scan.");
+    }
+
+    let base_tip = tip(ctx, base)?;
+
+    // If HEAD is already the base branch, there's nothing to scan.
+    if head == base {
+        return Ok(vec![]);
+    }
+
+    // Build a map from commit SHA -> branch name for all local branches.
+    // `git branch --format` gives us one entry per branch.
+    let branch_list = git(
+        ctx,
+        &[
+            "branch",
+            "--format=%(objectname) %(refname:short)",
+        ],
+    )?;
+    let mut sha_to_branch: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    for line in branch_list.lines() {
+        let line = line.trim();
+        if let Some((sha, bname)) = line.split_once(' ') {
+            sha_to_branch.insert(sha.to_string(), bname.to_string());
+        }
+    }
+
+    // Walk commits from HEAD back until we hit the base tip, collecting any
+    // commit that has a branch pointing at it.
+    let log = git(
+        ctx,
+        &[
+            "log",
+            "--format=%H",
+            &format!("{head}"),
+            &format!("^{base_tip}"),
+        ],
+    )?;
+
+    // The log is newest-first. We want to collect branch tips we encounter
+    // along the walk — these form the stack, top-to-bottom.
+    let mut stack_top_to_bottom: Vec<String> = Vec::new();
+    for sha in log.lines() {
+        let sha = sha.trim();
+        if let Some(bname) = sha_to_branch.get(sha) {
+            if bname != base {
+                stack_top_to_bottom.push(bname.clone());
+            }
+        }
+    }
+
+    // Reverse so the result is bottom-to-top (matches config file order).
+    stack_top_to_bottom.reverse();
+    Ok(stack_top_to_bottom)
+}
+
+fn cmd_init(ctx: &Ctx, name: &str, base: Option<&str>, scan: bool) -> Result<i32> {
     if !name
         .chars()
         .all(|c| c.is_alphanumeric() || matches!(c, '.' | '_' | '/' | '-'))
@@ -599,11 +667,46 @@ fn cmd_init(ctx: &Ctx, name: &str, base: Option<&str>) -> Result<i32> {
         err_print(&format!("Stack '{name}' already exists at .stacks/{name}."));
         return Ok(1);
     }
+
+    let scanned_branches = if scan {
+        match scan_branches(ctx, base) {
+            Ok(branches) => branches,
+            Err(e) => {
+                err_print(&format!("{e}"));
+                return Ok(1);
+            }
+        }
+    } else {
+        vec![]
+    };
+
     fs::create_dir_all(&ctx.stacks_dir)?;
-    let content = format!("# Stack: {name}\n# Base + branches in order, bottom-to-top. '#' for comments.\n{base}\n");
+    let mut content = format!(
+        "# Stack: {name}\n# Base + branches in order, bottom-to-top. '#' for comments.\n{base}\n"
+    );
+    for b in &scanned_branches {
+        content.push_str(b);
+        content.push('\n');
+    }
     fs::write(&file, content)?;
+
     ok(&format!("Created stack '{name}' with base '{base}'."));
-    info(&format!("Add branches with: sd add {name} <branch>"));
+    if scan {
+        if scanned_branches.is_empty() {
+            eprintln!(
+                "\x1b[1;33m⚠\x1b[0m  HEAD is already on '{base}' — no branches detected. Use 'sd add {name} <branch>' to add some."
+            );
+        } else {
+            info(&format!(
+                "Detected {} branch{}: {}",
+                scanned_branches.len(),
+                if scanned_branches.len() == 1 { "" } else { "es" },
+                scanned_branches.join(" -> ")
+            ));
+        }
+    } else {
+        info(&format!("Add branches with: sd add {name} <branch>"));
+    }
     Ok(0)
 }
 
@@ -830,7 +933,7 @@ fn run() -> Result<i32> {
         let cli = Cli::try_parse().map_err(|e| anyhow::anyhow!("{e}"))?;
         let ctx = Ctx::new()?;
         return match cli.command {
-            Cmd::Init { stack, base } => cmd_init(&ctx, &stack, base.as_deref()),
+            Cmd::Init { stack, base, scan } => cmd_init(&ctx, &stack, base.as_deref(), scan),
             Cmd::Add { stack, branch } => cmd_add(&ctx, &stack, &branch),
             Cmd::Rm { stack, branch } => cmd_rm(&ctx, &stack, &branch),
             Cmd::Show { stack } => cmd_show(&ctx, &stack),
