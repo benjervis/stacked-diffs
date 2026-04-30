@@ -30,9 +30,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Create a new stack config (default base: main)
+    /// Create a new stack config (default base: auto-detected from origin/HEAD)
     Init {
-        stack: String,
+        stack: Option<String>,
+        /// Override the base branch
+        #[arg(long)]
         base: Option<String>,
         /// Walk ancestry from HEAD to base and populate the config
         #[arg(long)]
@@ -294,7 +296,8 @@ fn cmd_help() {
   sd <command> [args]
 
 Commands:
-  init <stack> [<base>] [--scan]     create a new stack config (default base: main)
+  init <stack> [--base <base>] [--scan]   create a new stack config
+                                       base defaults to origin/HEAD (fallback: main)
                                        --scan: walk HEAD→base and populate branches
   add <stack> <branch>               create a branch off the top of the stack
                                      and append it to the config
@@ -1048,7 +1051,16 @@ fn run() -> Result<i32> {
         let cli = Cli::try_parse().map_err(|e| anyhow::anyhow!("{e}"))?;
         let ctx = Ctx::new()?;
         return match cli.command {
-            Cmd::Init { stack, base, scan } => cmd_init(&ctx, &stack, base.as_deref(), scan),
+            Cmd::Init { stack, base, scan } => {
+                let stack = match stack.as_deref() {
+                    Some(s) => s.to_string(),
+                    None => {
+                        err_print("init: stack name required.");
+                        return Ok(1);
+                    }
+                };
+                cmd_init(&ctx, &stack, base.as_deref(), scan)
+            }
             Cmd::Add { stack_or_branch, branch } => {
                 let (stack, branch) = match branch {
                     Some(b) => (stack_or_branch, b),

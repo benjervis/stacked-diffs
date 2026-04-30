@@ -53,7 +53,7 @@ These files are intended to be checked in — they describe an intent, like a `.
 
 | Command                             | Purpose                                                                                                                                                           |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sd init <stack> [<base>] [--scan]` | Create a new stack config. Base defaults to `origin/HEAD` (falls back to `main`). `--scan` walks ancestry from HEAD to base and populates branches automatically. |
+| `sd init <stack> [--base <base>] [--scan]` | Create a new stack config. Base defaults to `origin/HEAD` (falls back to `main`). `--scan` walks ancestry from HEAD to base and populates branches automatically. |
 | `sd add <stack> <branch>`           | `git checkout -b <branch>` from the top of the stack and append to config.                                                                                        |
 | `sd rm <stack> <branch>`            | Remove a branch from the config (does NOT delete the local branch).                                                                                               |
 | `sd show <stack>`                   | Print the stack chain in one line.                                                                                                                                |
@@ -82,6 +82,9 @@ sd add code-freeze ben/feature-c
 git checkout ben/feature-c
 sd init code-freeze --scan
 # → Detected 3 branches: ben/feature-a -> ben/feature-b -> ben/feature-c
+
+# Override the base if needed:
+sd init code-freeze --base master --scan
 
 # 2. Push all branches up so PRs can be opened.
 sd push code-freeze

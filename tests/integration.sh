@@ -356,11 +356,11 @@ test_init_with_explicit_base() {
     git -C "$repo" checkout --quiet main
 
     local out
-    run_rs "$repo" init dev-stack develop; out=$OUT
+    run_rs "$repo" init dev-stack --base develop; out=$OUT
     assert_eq "$TEST_EXIT" 0 "init should succeed with custom base" || { echo "$out"; return 1; }
     grep -q '^develop$' "$repo/.stacks/dev-stack" || { echo "    $(red FAIL): custom base not in config"; return 1; }
 
-    run_rs "$repo" init bad-stack does-not-exist; out=$OUT
+    run_rs "$repo" init bad-stack --base does-not-exist; out=$OUT
     [[ "$TEST_EXIT" -ne 0 ]] || { echo "    $(red FAIL): expected error for missing base"; return 1; }
     assert_contains "$out" "does not exist" "should reject missing base" || return 1
     return 0
