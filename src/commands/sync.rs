@@ -157,5 +157,5 @@ pub fn cmd_sync(ctx: &Ctx, name: &str, remote: &str) -> Result<CmdResult> {
     }
 
     step("Rebasing remaining branches...");
-    do_rebase(ctx, name, remote, false) // --no-fetch: already fetched above
+    do_rebase(ctx, name, remote, false, false) // --no-fetch: already fetched above
 }

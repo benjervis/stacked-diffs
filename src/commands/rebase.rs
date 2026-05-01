@@ -51,7 +51,7 @@ pub fn do_abort(ctx: &Ctx, name: &str) -> Result<CmdResult> {
 
 // ---------- rebase ----------
 
-pub fn do_rebase(ctx: &Ctx, name: &str, remote: &str, do_fetch: bool) -> Result<CmdResult> {
+pub fn do_rebase(ctx: &Ctx, name: &str, remote: &str, do_fetch: bool, prefer_remote: bool) -> Result<CmdResult> {
     if !repo_clean(ctx)? {
         err_print("Working tree is dirty. Commit or stash changes before running.");
         git_interactive(ctx, &["status", "--short"])?;
@@ -77,7 +77,7 @@ pub fn do_rebase(ctx: &Ctx, name: &str, remote: &str, do_fetch: bool) -> Result<
     if sd.exists() {
         resume_existing_state(ctx, name, base, branches, &sd)?;
     } else {
-        start_fresh(ctx, name, base, branches, &sd, remote, do_fetch)?;
+        start_fresh(ctx, name, base, branches, &sd, remote, do_fetch, prefer_remote)?;
     }
 
     rebase_branches(ctx, name, base, branches, count, &sd)
@@ -133,11 +133,12 @@ fn start_fresh(
     sd: &std::path::Path,
     remote: &str,
     do_fetch: bool,
+    prefer_remote: bool,
 ) -> Result<()> {
     if do_fetch {
         fetch_and_fast_forward(ctx, base, remote)?;
         for branch in branches {
-            fetch_and_fast_forward_branch(ctx, branch, remote)?;
+            fetch_and_fast_forward_branch(ctx, branch, remote, prefer_remote)?;
         }
     } else {
         step(&format!("Skipping fetch (--no-fetch). Using local tips."));
@@ -156,8 +157,10 @@ fn start_fresh(
 
 /// Fetch `remote/<branch>` and fast-forward the local branch if possible.
 /// If the remote has no tracking ref for this branch, silently skips.
-/// If local has diverged from remote (i.e. would need a merge), errors.
-fn fetch_and_fast_forward_branch(ctx: &Ctx, branch: &str, remote: &str) -> Result<()> {
+/// If `prefer_remote` is true and local has diverged, resets local to the
+/// remote tip (use when Devin Cloud has the authoritative version).
+/// Otherwise divergence is an error — the user must reconcile manually.
+fn fetch_and_fast_forward_branch(ctx: &Ctx, branch: &str, remote: &str, prefer_remote: bool) -> Result<()> {
     // Fetch — if the remote doesn't know this branch, that's fine.
     let fetched = git_ok(ctx, &["fetch", remote, branch])?;
     if !fetched {
@@ -188,9 +191,17 @@ fn fetch_and_fast_forward_branch(ctx: &Ctx, branch: &str, remote: &str) -> Resul
         ));
     } else if git_ok(ctx, &["merge-base", "--is-ancestor", &remote_tip, &local_tip])? {
         // Local is ahead of remote — nothing to do.
+    } else if prefer_remote {
+        // Diverged, but caller asked us to trust remote — reset local to remote tip.
+        git(ctx, &["update-ref", &format!("refs/heads/{branch}"), &remote_tip])?;
+        info(&format!(
+            "Reset '{branch}' to {remote} tip ({}, discarding local divergence).",
+            short(&remote_tip)
+        ));
     } else {
         err_print(&format!(
-            "Local '{branch}' has diverged from {remote}/{branch}. Reconcile manually."
+            "Local '{branch}' has diverged from {remote}/{branch}. \
+             Reconcile manually, or re-run with --prefer-remote to reset to the {remote} version."
         ));
         return Err(anyhow::anyhow!("branch diverged: {branch}"));
     }

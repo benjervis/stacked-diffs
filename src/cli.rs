@@ -70,6 +70,10 @@ pub enum Cmd {
         remote: Option<String>,
         #[arg(long)]
         abort: bool,
+        /// If a stack branch has diverged from remote, reset it to the remote
+        /// version instead of erroring (useful after a force-push by Devin Cloud)
+        #[arg(long = "prefer-remote")]
+        prefer_remote: bool,
     },
     /// git push --force-with-lease each branch
     Push {

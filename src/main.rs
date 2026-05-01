@@ -100,13 +100,13 @@ fn dispatch(cmd: Cmd, ctx: &Ctx) -> Result<CmdResult> {
             let stack = resolve_stack(ctx, stack.as_deref())?;
             cmd_status(ctx, &stack, remote.as_deref().unwrap_or("origin"))
         }
-        Cmd::Rebase { stack, no_fetch, remote, abort } => {
+        Cmd::Rebase { stack, no_fetch, remote, abort, prefer_remote } => {
             let stack = resolve_stack(ctx, stack.as_deref())?;
             let remote = remote.as_deref().unwrap_or("origin");
             if abort {
                 do_abort(ctx, &stack)
             } else {
-                do_rebase(ctx, &stack, remote, !no_fetch)
+                do_rebase(ctx, &stack, remote, !no_fetch, prefer_remote)
             }
         }
         Cmd::Push { stack, remote } => {
@@ -133,6 +133,7 @@ fn rebase_legacy(args: &[String]) -> Result<CmdResult> {
     let stack = args[0].clone();
     let rest = &args[1..];
     let mut no_fetch = false;
+    let mut prefer_remote = false;
     let mut remote = "origin".to_string();
     let mut abort = false;
     let mut i = 0;
@@ -141,6 +142,7 @@ fn rebase_legacy(args: &[String]) -> Result<CmdResult> {
             "--no-fetch" => no_fetch = true,
             "--fetch" => no_fetch = false,
             "--abort" => abort = true,
+            "--prefer-remote" => prefer_remote = true,
             "--remote" => {
                 i += 1;
                 if i >= rest.len() {
@@ -166,7 +168,7 @@ fn rebase_legacy(args: &[String]) -> Result<CmdResult> {
     if abort {
         do_abort(&ctx, &stack)
     } else {
-        do_rebase(&ctx, &stack, &remote, !no_fetch)
+        do_rebase(&ctx, &stack, &remote, !no_fetch, prefer_remote)
     }
 }
 
