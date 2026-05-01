@@ -136,8 +136,11 @@ fn start_fresh(
 ) -> Result<()> {
     if do_fetch {
         fetch_and_fast_forward(ctx, base, remote)?;
+        for branch in branches {
+            fetch_and_fast_forward_branch(ctx, branch, remote)?;
+        }
     } else {
-        step(&format!("Skipping fetch (--no-fetch). Using local '{base}' tip."));
+        step(&format!("Skipping fetch (--no-fetch). Using local tips."));
     }
 
     // Verify all branches exist locally.
@@ -149,6 +152,50 @@ fn start_fresh(
     }
 
     snapshot_state(ctx, name, base, branches, sd)
+}
+
+/// Fetch `remote/<branch>` and fast-forward the local branch if possible.
+/// If the remote has no tracking ref for this branch, silently skips.
+/// If local has diverged from remote (i.e. would need a merge), errors.
+fn fetch_and_fast_forward_branch(ctx: &Ctx, branch: &str, remote: &str) -> Result<()> {
+    // Fetch — if the remote doesn't know this branch, that's fine.
+    let fetched = git_ok(ctx, &["fetch", remote, branch])?;
+    if !fetched {
+        // No tracking ref on remote — nothing to pull.
+        return Ok(());
+    }
+
+    let remote_ref = format!("{remote}/{branch}");
+    // After fetch, check whether the remote ref actually exists.
+    if !git_silent(ctx, &["rev-parse", "--verify", &remote_ref]) {
+        return Ok(());
+    }
+
+    let local_tip = tip(ctx, branch)?;
+    let remote_tip = tip(ctx, &remote_ref)?;
+
+    if local_tip == remote_tip {
+        return Ok(());
+    }
+
+    if git_ok(ctx, &["merge-base", "--is-ancestor", &local_tip, &remote_tip])? {
+        // Local is behind remote — safe to fast-forward.
+        git(ctx, &["update-ref", &format!("refs/heads/{branch}"), &remote_tip])?;
+        info(&format!(
+            "Fast-forwarded '{branch}' from {} to {}.",
+            short(&local_tip),
+            short(&remote_tip)
+        ));
+    } else if git_ok(ctx, &["merge-base", "--is-ancestor", &remote_tip, &local_tip])? {
+        // Local is ahead of remote — nothing to do.
+    } else {
+        err_print(&format!(
+            "Local '{branch}' has diverged from {remote}/{branch}. Reconcile manually."
+        ));
+        return Err(anyhow::anyhow!("branch diverged: {branch}"));
+    }
+
+    Ok(())
 }
 
 /// Fetch `remote/base` and fast-forward the local base branch.
