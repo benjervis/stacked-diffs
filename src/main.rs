@@ -96,9 +96,9 @@ fn dispatch(cmd: Cmd, ctx: &Ctx) -> Result<CmdResult> {
             let stack = resolve_stack(ctx, stack.as_deref())?;
             cmd_show(ctx, &stack)
         }
-        Cmd::Status { stack, remote } => {
+        Cmd::Status { stack, remote, check } => {
             let stack = resolve_stack(ctx, stack.as_deref())?;
-            cmd_status(ctx, &stack, remote.as_deref().unwrap_or("origin"))
+            cmd_status(ctx, &stack, remote.as_deref().unwrap_or("origin"), check)
         }
         Cmd::Rebase { stack, no_fetch, remote, abort, prefer_remote } => {
             let stack = resolve_stack(ctx, stack.as_deref())?;

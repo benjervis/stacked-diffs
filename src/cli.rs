@@ -60,6 +60,9 @@ pub enum Cmd {
         stack: Option<String>,
         #[arg(long)]
         remote: Option<String>,
+        /// Fetch all stack branches and detect if rebasing is needed
+        #[arg(long)]
+        check: bool,
     },
     /// Rebase every branch in the stack onto its parent
     Rebase {

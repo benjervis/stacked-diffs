@@ -1,0 +1,27 @@
+--- Before ---
+* 14d594e7b (HEAD -> feature/wor-1045-workspaces-insights) fix(mfe-workspaces): make TopLinktrees Click rate column sortable
+* 27717c44e fix(mfe-workspaces): render Arbor skeletons in TopLinktrees while loading
+* 20e07ca0b (devin/fix-insights-filter-dividers) mfe-workspaces: lighten InsightsFilter dividers
+* 03a72b5ea fix(mfe-workspaces): restore insights-chat-panel class on AI chat aside
+* b827a75d8 refactor(mfe-workspaces): convert Insights to fragment co-location
+* 720aec689 refactor(mfe-workspaces): drop defensive useMemos in Insights
+* 6ce041218 feat(mfe-workspaces): wire Insights page to real analytics data (WOR-1045)
+* 4c34578da (bjervis/adopt-shared-table-for-workspaces) mfe-workspaces: adopt @repo/data-table for Top Linktrees table
+* de8db5511 (devin/1777426138-shared-data-table) data-table: add textSize prop for a quieter header+body treatment
+* 8d0ea7615 data-table: default to descending-first sorting
+* 9a860a7ba data-table: switch ColumnHeader to if-return on canSort
+------
+
+--- After ---
+* 14d594e7b (HEAD -> feature/wor-1045-workspaces-insights) fix(mfe-workspaces): make TopLinktrees Click rate column sortable
+* 27717c44e fix(mfe-workspaces): render Arbor skeletons in TopLinktrees while loading
+* 03a72b5ea fix(mfe-workspaces): restore insights-chat-panel class on AI chat aside
+* b827a75d8 refactor(mfe-workspaces): convert Insights to fragment co-location
+* 720aec689 refactor(mfe-workspaces): drop defensive useMemos in Insights
+* 6ce041218 feat(mfe-workspaces): wire Insights page to real analytics data (WOR-1045)
+* 20e07ca0b (devin/fix-insights-filter-dividers) mfe-workspaces: lighten InsightsFilter dividers
+* 4c34578da (bjervis/adopt-shared-table-for-workspaces) mfe-workspaces: adopt @repo/data-table for Top Linktrees table
+* de8db5511 (devin/1777426138-shared-data-table) data-table: add textSize prop for a quieter header+body treatment
+* 8d0ea7615 data-table: default to descending-first sorting
+* 9a860a7ba data-table: switch ColumnHeader to if-return on canSort
+------
