@@ -15,24 +15,29 @@ pub fn cmd_status(ctx: &Ctx, name: &str, remote: &str, check: bool) -> Result<Cm
     if check {
         step(&format!("Fetching stack branches from {remote}..."));
         
-        // Fetch all stack branches including base
-        let all_refs: Vec<String> = std::iter::once(stack.base.clone())
-            .chain(stack.branches.clone())
-            .collect();
-        
-        for r#ref in &all_refs {
-            if git_silent(ctx, &["ls-remote", "--exit-code", remote, r#ref]) {
-                git_silent(ctx, &["fetch", remote, &format!("{ref}:{ref}")]);
+        // Check if remote exists before trying to fetch
+        if git_silent(ctx, &["remote", "get-url", remote]) {
+            // Fetch all stack branches including base
+            let all_refs: Vec<String> = std::iter::once(stack.base.clone())
+                .chain(stack.branches.clone())
+                .collect();
+            
+            for r#ref in &all_refs {
+                if git_silent(ctx, &["ls-remote", "--exit-code", remote, r#ref]) {
+                    git_silent(ctx, &["fetch", remote, &format!("{ref}:{ref}")]);
+                }
             }
+            
+            // Fast-forward the base branch if needed
+            if let Err(e) = fetch_and_fast_forward(ctx, &stack.base, remote) {
+                err_print(&format!("Failed to fast-forward base branch '{}': {}", stack.base, e));
+                return Ok(Err(CmdError::GitError));
+            }
+            
+            info(&format!("Fetched {} branches from {remote}", all_refs.len()));
+        } else {
+            info(&format!("Remote '{remote}' not found - skipping fetch"));
         }
-        
-        // Fast-forward the base branch if needed
-        if let Err(e) = fetch_and_fast_forward(ctx, &stack.base, remote) {
-            err_print(&format!("Failed to fast-forward base branch '{}': {}", stack.base, e));
-            return Ok(Err(CmdError::GitError));
-        }
-        
-        info(&format!("Fetched {} branches from {remote}", all_refs.len()));
         println!();
     }
 
