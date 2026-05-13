@@ -23,9 +23,7 @@ pub fn cmd_status(ctx: &Ctx, name: &str, remote: &str, check: bool) -> Result<Cm
                 .collect();
             
             for r#ref in &all_refs {
-                if git_silent(ctx, &["ls-remote", "--exit-code", remote, r#ref]) {
-                    git_silent(ctx, &["fetch", remote, &format!("{ref}:{ref}")]);
-                }
+                git_silent(ctx, &["fetch", remote, r#ref]);
             }
             
             // Fast-forward the base branch if needed
@@ -127,8 +125,8 @@ pub fn cmd_status(ctx: &Ctx, name: &str, remote: &str, check: bool) -> Result<Cm
                 let rbehind: u64 = rparts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
                 let rahead: u64 = rparts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
                 
-                // Track if branch has diverged from remote (both ahead and behind)
-                if rahead > 0 && rbehind > 0 {
+                // Track if branch is behind remote (remote has commits local doesn't, or diverged)
+                if rbehind > 0 {
                     needs_rebase = true;
                 }
                 

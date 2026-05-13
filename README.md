@@ -51,18 +51,19 @@ These files are intended to be checked in — they describe an intent, like a `.
 
 ## Commands
 
-| Command                             | Purpose                                                                                                                                                           |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Command                                  | Purpose                                                                                                                                                           |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sd init <stack> [--base <base>] [--scan]` | Create a new stack config. Base defaults to `origin/HEAD` (falls back to `main`). `--scan` walks ancestry from HEAD to base and populates branches automatically. |
-| `sd add <stack> <branch>`           | `git checkout -b <branch>` from the top of the stack and append to config.                                                                                        |
-| `sd rm <stack> <branch>`            | Remove a branch from the config (does NOT delete the local branch).                                                                                               |
-| `sd show <stack>`                   | Print the stack chain in one line.                                                                                                                                |
-| `sd status <stack> [--remote NAME]` | Per-branch tip + ahead/behind vs parent + remote sync state.                                                                                                      |
-| `sd rebase <stack> [flags]`         | Rebase every branch in the stack onto its parent. Flags: `--no-fetch`, `--remote NAME`, `--abort`.                                                                |
-| `sd push <stack> [--remote NAME]`   | `git push --force-with-lease` each branch.                                                                                                                        |
-| `sd sync <stack> [--remote NAME]`   | Detect merged PRs via `gh`, remove them from the stack, delete local branches, and rebase the remainder. Aborts if any PR was closed without merging.             |
-| `sd --list`                         | List all configured stacks.                                                                                                                                       |
-| `sd --help`                         | Show full help.                                                                                                                                                   |
+| `sd add <stack> <branch>`                | `git checkout -b <branch>` from the top of the stack and append to config.                                                                                        |
+| `sd rm <stack> <branch>`                 | Remove a branch from the config (does NOT delete the local branch).                                                                                               |
+| `sd checkout <stack>`                    | Interactive TUI to select and checkout a branch from the stack.                                                                                                   |
+| `sd show <stack>`                        | Print the stack chain in one line (with colors and tree view).                                                                                                    |
+| `sd status <stack> [--remote NAME] [--check]` | Per-branch tip + ahead/behind vs parent + remote sync state. `--check` fetches and detects if rebasing is needed.                                                |
+| `sd rebase <stack> [flags]`              | Rebase every branch in the stack onto its parent. Flags: `--no-fetch`, `--remote NAME`, `--abort`, `--prefer-remote`.                                            |
+| `sd push <stack> [--remote NAME]`        | `git push --force-with-lease` each branch.                                                                                                                        |
+| `sd sync <stack> [--remote NAME]`        | Detect merged PRs via `gh`, remove them from the stack, delete local branches, and rebase the remainder. Aborts if any PR was closed without merging.             |
+| `sd --list`                              | List all configured stacks (with colors and tree view).                                                                                                           |
+| `sd --help`                              | Show full help.                                                                                                                                                   |
 
 Bare `sd <stack>` is shorthand for `sd rebase <stack>`.
 
@@ -91,6 +92,8 @@ sd init code-freeze --base master --scan
 sd push code-freeze
 
 # 3. main moves, or you commit directly to a mid-stack branch.
+#    Check if rebasing is needed (fetches from remote):
+sd status code-freeze --check
 #    Rebase the whole chain back into a single line:
 sd rebase code-freeze
 # (or just: sd code-freeze)
@@ -106,6 +109,9 @@ sd sync code-freeze
 
 # At any point, see where each branch sits:
 sd status code-freeze
+
+# Or use the interactive checkout to switch between branches:
+sd checkout code-freeze
 ```
 
 ## Conflicts
@@ -126,6 +132,8 @@ To bail out entirely and restore every branch to the SHA it had before the run s
 sd rebase <stack> --abort
 ```
 
+If a branch has diverged from its remote (different local and remote tips), `sd rebase` will prompt you to reconcile manually. Alternatively, use `--prefer-remote` to reset the branch to match the remote version.
+
 ## How it preserves mid-stack commits
 
 For each branch `sd` runs:
@@ -144,6 +152,7 @@ git rebase --onto <new-parent-tip> <old-parent-tip> <branch>
 | 1    | Invocation/config error                |
 | 2    | Rebase conflict — user action required |
 | 3    | Rebase aborted                         |
+| 4    | Rebase needed (status --check)         |
 
 ## License
 
